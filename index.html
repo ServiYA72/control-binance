@@ -207,6 +207,23 @@ form.add { border-color: transparent; }
   .pend { flex-wrap: wrap; justify-content: flex-end; }
   .hero-total .val { font-size: 30px; }
 }
+/* ---- Que todo el texto quepa en su recuadro ---- */
+.hero-top { flex-wrap: wrap; }
+.hero-top > div { min-width: 0; flex: 1 1 180px; }
+.hero .quien { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.band > div, .chip, .com, form.add label { min-width: 0; }
+.band .val { font-size: clamp(17px, 5.2vw, 22px); overflow-wrap: anywhere; line-height: 1.25; }
+.hero-total .val { overflow-wrap: anywhere; }
+.chip b { font-size: clamp(12px, 3.8vw, 15px); }
+.chip small { overflow-wrap: anywhere; }
+td, th { overflow-wrap: anywhere; }
+input, select { max-width: 100%; text-overflow: ellipsis; }
+@media (max-width: 640px) {
+  .hero .quien { flex-basis: 100%; order: 3; margin-left: 0; text-align: left; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  .hero .quien br { display: none; }
+  .hero .quien #quien { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+  .hero .quien button { flex: none; white-space: nowrap; }
+}
 </style>
 
 <form id="login" hidden autocomplete="on">
