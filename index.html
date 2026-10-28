@@ -17,7 +17,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Libro de cuentas: columnas de cifras en mono, texto en sans, verde bolívar como único acento, ámbar solo para lo pendiente */
 :root {
@@ -139,10 +139,79 @@ form.add select { width: 100%; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 6px; font-size: 14px; max-width: calc(100vw - 32px); }
 .toast[hidden] { display: none; }
 @media (prefers-reduced-motion: no-preference) { button { transition: border-color .15s, color .15s; } }
+
+/* ---- Apariencia fresca: tarjetas, encabezado verde, navegación con íconos ---- */
+:root { --accent: #0F5C4D; --accent-soft: #DDEFE8; --gold: #E5A12E; --bg: #F3F6F3; --radius: 16px; --shadow: 0 1px 2px rgba(15,60,45,.06), 0 4px 14px rgba(15,60,45,.06); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --accent: #4FC79A; --shadow: none; } }
+:root[data-theme="dark"] { --accent: #4FC79A; --shadow: none; }
+body { padding-bottom: 40px; }
+h1, .hero h1 { font-family: "Fraunces", Georgia, serif; font-weight: 600; }
+h2 { font-size: 14px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; margin-bottom: 10px; }
+.hero { background: linear-gradient(135deg, #127A63, #0A3A30); color: #fff; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow); }
+.hero-top { display: flex; align-items: center; gap: 12px; }
+.hero-top .logo { width: 46px; height: 46px; flex: none; border-radius: 12px; box-shadow: 0 0 0 2px rgba(255,255,255,.25); }
+.hero-top h1 { color: #fff; font-size: 21px; line-height: 1.15; }
+.hero-top p { margin: 0; font-size: 12px; letter-spacing: .18em; color: #F2C66B; }
+.hero .quien { margin-left: auto; text-align: right; color: rgba(255,255,255,.8); font-size: 12px; letter-spacing: 0; }
+.hero .quien button { color: #fff; text-decoration: underline; }
+.hero-total .lbl { font-size: 13px; color: rgba(255,255,255,.75); display: block; }
+.hero-total .val { font-family: var(--mono); font-size: 34px; font-weight: 500; line-height: 1.15; display: block; }
+.hero-total .sub { font-size: 12px; color: rgba(255,255,255,.7); }
+.chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.chip { background: rgba(255,255,255,.12); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; min-width: 0; }
+.chip span { font-size: 11px; color: rgba(255,255,255,.75); }
+.chip b { font-family: var(--mono); font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.chip small { font-size: 10px; color: rgba(255,255,255,.65); }
+.chip small.vieja { color: #F2C66B; }
+.band { border: 0; background: none; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.band > div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+.band > div:last-child { border-right: 1px solid var(--line); }
+.band .val { font-size: 22px; }
+.tablebox, form.add, .comercios, #login { border-radius: var(--radius); box-shadow: var(--shadow); }
+input, select { border-radius: 10px; padding: 10px 12px; }
+button { border-radius: 10px; padding: 10px 16px; }
+button.main { background: var(--accent); }
+form.add { border-color: transparent; }
+.tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 0; gap: 6px; padding: 4px 0; }
+.tabs button { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; background: var(--surface); color: var(--ink-2); font-size: 14px; }
+.tabs button svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tabs .t-c { display: none; }
+@media (max-width: 640px) {
+  body { padding-bottom: 96px; }
+  .tabs { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 20; display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -4px 14px rgba(15,60,45,.08); }
+  .tabs button { flex-direction: column; gap: 2px; border: 0; border-radius: 12px; padding: 6px 2px; font-size: 11px; background: none; }
+  .tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+  .tabs .t-l { display: none; }
+  .tabs .t-c { display: inline; }
+  .toast { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  /* cada fila de la tabla pasa a ser una tarjeta */
+  .tablebox { overflow: visible; background: none; border: 0; box-shadow: none; }
+  table { min-width: 0; display: block; }
+  thead { display: none; }
+  tbody { display: flex; flex-direction: column; gap: 10px; }
+  tr { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
+  td { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; padding: 3px 0; border: 0; }
+  td.r { white-space: normal; }
+  td .hora { flex-basis: 100%; text-align: right; }
+  td.fecha .hora { flex-basis: auto; text-align: left; }
+  td[data-l]::before { content: attr(data-l); color: var(--ink-2); font-size: 12px; font-family: var(--sans); flex: none; }
+  td.det { order: -2; max-width: none; font-size: 17px; font-weight: 600; }
+  td.det[data-l] { order: 0; font-size: 14px; font-weight: 400; }
+  td.fecha { order: -1; font-size: 12px; justify-content: flex-start; gap: 8px; padding-bottom: 6px; }
+  td.fecha .hora { display: inline; }
+  td[data-l="Dólares"], td[data-l="Monto"], td[data-l="Saldo"] { font-size: 17px; font-weight: 600; color: var(--ink); }
+  td:last-child:not([data-l]):not(.det):not(.fecha) { justify-content: flex-end; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; }
+  tr.editrow { padding: 0; border: 0; background: none; box-shadow: none; }
+  tr.editrow td { display: block; padding: 0; }
+  .pend { flex-wrap: wrap; justify-content: flex-end; }
+  .hero-total .val { font-size: 30px; }
+}
 </style>
 
 <form id="login" hidden autocomplete="on">
-  <h1>Control Binance USDT</h1>
+  <svg class="logo" style="width:56px;height:56px" viewBox="0 0 200 200" aria-hidden="true"><defs><linearGradient id="lg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#127A63"/><stop offset="1" stop-color="#0A3A30"/></linearGradient><linearGradient id="lo2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFD98A"/><stop offset="1" stop-color="#E5A12E"/></linearGradient></defs><rect width="200" height="200" rx="46" fill="url(#lg2)"/><rect x="42" y="48" width="16" height="104" rx="8" fill="#fff"/><rect x="42" y="48" width="50" height="16" rx="8" fill="#fff"/><rect x="42" y="92" width="40" height="16" rx="8" fill="#fff"/><rect x="42" y="136" width="50" height="16" rx="8" fill="#fff"/><circle cx="122" cy="100" r="34" fill="none" stroke="#0E5646" stroke-width="30"/><circle cx="122" cy="100" r="34" fill="none" stroke="url(#lo2)" stroke-width="16"/></svg>
+  <h1>Presupuesto Familiar</h1>
   <p id="login-msg">Entra con tu correo y tu clave.</p>
   <label>Correo<input id="login-email" type="email" autocomplete="username" required></label>
   <label>Clave<input id="login-pass" type="password" autocomplete="current-password" minlength="6" required></label>
@@ -154,16 +223,21 @@ form.add select { width: 100%; }
 </form>
 
 <div class="wrap" id="app" hidden>
-  <header class="top">
-    <div>
-      <h1>Control Binance USDT</h1>
-      <p>Tarjeta Mastercard y compra/venta de USDT</p>
-      <p class="quien"><span id="quien"></span> <button type="button" class="link" data-act="salir">Salir</button></p>
+  <header class="hero">
+    <div class="hero-top">
+      <svg class="logo" viewBox="0 0 200 200" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#127A63"/><stop offset="1" stop-color="#0A3A30"/></linearGradient><linearGradient id="lo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFD98A"/><stop offset="1" stop-color="#E5A12E"/></linearGradient></defs><rect width="200" height="200" rx="46" fill="url(#lg)"/><rect x="42" y="48" width="16" height="104" rx="8" fill="#fff"/><rect x="42" y="48" width="50" height="16" rx="8" fill="#fff"/><rect x="42" y="92" width="40" height="16" rx="8" fill="#fff"/><rect x="42" y="136" width="50" height="16" rx="8" fill="#fff"/><circle cx="122" cy="100" r="34" fill="none" stroke="#0E5646" stroke-width="30"/><circle cx="122" cy="100" r="34" fill="none" stroke="url(#lo)" stroke-width="16"/></svg>
+      <div><h1>Presupuesto Familiar</h1><p>ESPINOZA OTAIZA</p></div>
+      <p class="quien"><span id="quien"></span><br><button type="button" class="link" data-act="salir">Salir</button></p>
     </div>
-    <div class="tasa" id="tasa-box">
-      <label>Tasa de hoy (Bs por USDT, Binance P2P)</label>
-      <div class="tasa-val num" id="tasa-val">—</div>
-      <small id="tasa-nota">Sin datos todavía</small>
+    <div class="hero-total">
+      <span class="lbl">Saldo total en tus cuentas</span>
+      <span class="val" id="hero-total">—</span>
+      <span class="sub" id="hero-sub"></span>
+    </div>
+    <div class="chips" id="tasa-box">
+      <div class="chip"><span>Dólar BCV</span><b id="t-bcv">—</b></div>
+      <div class="chip"><span>Euro BCV</span><b id="t-eur">—</b></div>
+      <div class="chip"><span>Binance P2P</span><b id="tasa-val">—</b><small id="tasa-nota">Sin datos todavía</small></div>
     </div>
   </header>
 
@@ -172,12 +246,12 @@ form.add select { width: 100%; }
   </section>
 
   <div class="tabs" role="tablist" aria-label="Secciones">
-    <button role="tab" id="tab-gasto" aria-selected="true" data-tab="gasto">Gastos tarjeta</button>
-    <button role="tab" id="tab-venta" aria-selected="false" data-tab="venta">Ventas USDT</button>
-    <button role="tab" id="tab-compra" aria-selected="false" data-tab="compra">Compras USDT</button>
-    <button role="tab" id="tab-cuentas" aria-selected="false" data-tab="cuentas">Cuentas</button>
-    <button role="tab" id="tab-calc" aria-selected="false" data-tab="calc">Calculadora</button>
-    <button role="tab" id="tab-resumen" aria-selected="false" data-tab="resumen">Resumen</button>
+    <button role="tab" id="tab-gasto" aria-selected="true" data-tab="gasto"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg><span class="t-l">Pagos</span><span class="t-c">Pagos</span></button>
+    <button role="tab" id="tab-venta" aria-selected="false" data-tab="venta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg><span class="t-l">Ventas</span><span class="t-c">Ventas</span></button>
+    <button role="tab" id="tab-compra" aria-selected="false" data-tab="compra"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 7L7 17M15 17H7V9"/></svg><span class="t-l">Compras</span><span class="t-c">Compras</span></button>
+    <button role="tab" id="tab-cuentas" aria-selected="false" data-tab="cuentas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/></svg><span class="t-l">Cuentas</span><span class="t-c">Cuentas</span></button>
+    <button role="tab" id="tab-calc" aria-selected="false" data-tab="calc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></svg><span class="t-l">Calculadora</span><span class="t-c">Calc.</span></button>
+    <button role="tab" id="tab-resumen" aria-selected="false" data-tab="resumen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg><span class="t-l">Resumen</span><span class="t-c">Resumen</span></button>
   </div>
 
   <div id="estado" class="estado">Cargando datos…</div>
@@ -365,16 +439,25 @@ form.add select { width: 100%; }
   }
 
   function renderTasa() {
-    var v = $('#tasa-val'), n = $('#tasa-nota');
+    var v = $('#tasa-val'), n = $('#tasa-nota'), act = tasasAct();
+    $('#t-bcv').textContent = act.bcv_usd ? bs(act.bcv_usd) : '—';
+    $('#t-eur').textContent = act.bcv_eur ? bs(act.bcv_eur) : '—';
     if (!tasa) { v.textContent = '—'; n.textContent = 'Sin datos todavía'; n.className = ''; return; }
-    var d = new Date(tasa.momento), act = tasasAct(), partes = [];
-    if (act.bcv_usd) partes.push('BCV $ ' + bs(act.bcv_usd));
-    if (act.bcv_eur) partes.push('€ ' + bs(act.bcv_eur));
-    var viejo = Date.now() - d.getTime() > 3 * 3600 * 1000;
-    v.textContent = bs(tasa.valor) + ' Bs';
-    n.textContent = 'Actualizada ' + fechaTxt(ymd(d)) + ' ' + horaTxt(tasa.momento) + (partes.length ? ' · ' + partes.join(' · ') : '');
+    var d = new Date(tasa.momento), viejo = Date.now() - d.getTime() > 3 * 3600 * 1000;
+    v.textContent = bs(tasa.valor);
+    n.textContent = 'Actualizada ' + fechaTxt(ymd(d)) + ' ' + horaTxt(tasa.momento);
     n.className = viejo ? 'vieja' : '';
   }
+  // Saldo total de las cuentas en dólares (el mismo cálculo de la sección Cuentas)
+  function renderHero() {
+    var tr = tasaRef(), filas = filasCuentas(tr);
+    var t = $('#hero-total'), sub = $('#hero-sub');
+    if (!filas.length) { t.textContent = '—'; sub.textContent = ''; return; }
+    var falta = filas.some(function (x) { return x.u == null; });
+    t.textContent = usd(sum(filas, function (x) { return x.u; }));
+    sub.textContent = falta ? 'Falta la tasa para contar los Bs' : (tr ? 'Bs contados a ' + bs(tr.v) + (tr.aprox ? ' (aprox.)' : '') : '');
+  }
+
 
   function bandHtml(items) {
     return items.map(function (i) {
@@ -428,15 +511,15 @@ form.add select { width: 100%; }
         var d = derive(m);
         return '<tr><td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>' +
           '<td class="det">' + esc(m.detalle) + '</td>' +
-          '<td class="r">' + bs(d.bs) + '</td>' +
-          '<td class="r tcell">' + (d.tipo === 'bcv' || d.tipo === 'manual'
+          '<td class="r" data-l="Bolívares">' + bs(d.bs) + '</td>' +
+          '<td class="r tcell" data-l="Tasa">' + (d.tipo === 'bcv' || d.tipo === 'manual'
             ? (d.tasa ? bs(d.tasa) + '<span class="aprox">' + (d.tipo === 'bcv' ? 'BCV' : 'manual') + '</span>' : '—')
             : (d.aprox || d.hora
               ? bs(d.tasa) + (d.hora ? '<span class="aprox" title="Tasa de Binance P2P guardada a esa hora">Binance · de esa hora</span>' : '<span class="aprox" title="Tasa de tu compra o venta P2P más cercana a esa hora">Binance · aprox.</span>') + (edit && canWrite ? pendForm(m.id, 'tasa', 'Cambiar') : '')
               : (d.tasa ? bs(d.tasa) : (edit && canWrite && m.usd == null ? pendForm(m.id, 'tasa', 'Tasa') : '—')))) + '</td>' +
-          '<td class="r">' + usd(d.usdt) + '</td>' +
-          '<td class="r">' + (d.costo != null ? nf.format(d.costo) + ' USDT' : '—') + '</td>' +
-          '<td class="r">' + (d.dif != null ? '<span class="' + (d.dif >= 0 ? 'pos' : 'neg') + '">' + (d.dif >= 0 ? '+' : '−') + usd(Math.abs(d.dif)) + '</span>' : '—') + '</td>' + cel(m) + '</tr>';
+          '<td class="r" data-l="Dólares">' + usd(d.usdt) + '</td>' +
+          '<td class="r" data-l="Costo USDT">' + (d.costo != null ? nf.format(d.costo) + ' USDT' : '—') + '</td>' +
+          '<td class="r" data-l="Diferencia">' + (d.dif != null ? '<span class="' + (d.dif >= 0 ? 'pos' : 'neg') + '">' + (d.dif >= 0 ? '+' : '−') + usd(Math.abs(d.dif)) + '</span>' : '—') + '</td>' + cel(m) + '</tr>';
       }).join('');
     } else {
       head = '<th>Fecha</th><th>Nota</th><th class="r">USDT</th><th class="r">Bolívares</th><th class="r">Tasa</th>' + fin;
@@ -445,9 +528,9 @@ form.add select { width: 100%; }
         var d = derive(m);
         return '<tr><td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>' +
           '<td class="det">' + esc(m.detalle || '') + '</td>' +
-          '<td class="r">' + nf.format(m.usdt) + '</td>' +
-          '<td class="r">' + (d.bs ? bs(d.bs) : (edit && canWrite ? pendForm(m.id, 'bs', 'Bs') : '—')) + '</td>' +
-          '<td class="r">' + (d.tasa ? bs(d.tasa) : '—') + '</td>' + cel(m) + '</tr>';
+          '<td class="r" data-l="USDT">' + nf.format(m.usdt) + '</td>' +
+          '<td class="r" data-l="Bolívares">' + (d.bs ? bs(d.bs) : (edit && canWrite ? pendForm(m.id, 'bs', 'Bs') : '—')) + '</td>' +
+          '<td class="r" data-l="Tasa">' + (d.tasa ? bs(d.tasa) : '—') + '</td>' + cel(m) + '</tr>';
       }).join('');
     }
     return '<div class="tablebox"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
@@ -617,6 +700,12 @@ form.add select { width: 100%; }
   // ---- Cuentas ----
   var MON = { USD: 'Dólares', USDT: 'USDT', BS: 'Bolívares' };
   function dinero(mon, n) { return mon === 'BS' ? bs(n) + ' Bs' : (mon === 'USD' ? usd(n) : nf.format(n) + ' USDT'); }
+  function filasCuentas(tr) {
+    return cuentas.map(function (cu) {
+      var v = saldoDe(cu);
+      return { cu: cu, v: v, u: cu.moneda === 'BS' ? (tr ? v / tr.v : null) : v };
+    });
+  }
   function cuentaDe(id) { return cuentas.filter(function (c) { return c.id === id; })[0]; }
   function saldoDe(c) {
     var v = Number(c.saldo_inicial) || 0;
@@ -653,11 +742,7 @@ form.add select { width: 100%; }
     if (tab !== 'cuentas' || !loaded) { c.hidden = true; return; }
     c.hidden = false;
     llenarSelects();
-    var tr = tasaRef();
-    var filas = cuentas.map(function (cu) {
-      var v = saldoDe(cu);
-      return { cu: cu, v: v, u: cu.moneda === 'BS' ? (tr ? v / tr.v : null) : v };
-    });
+    var tr = tasaRef(), filas = filasCuentas(tr);
     var sinTr = filas.some(function (x) { return x.u == null; });
     $('#cu-band').innerHTML = bandHtml([
       ['Total en dólares', usd(sum(filas, function (x) { return x.u; })), sinTr ? 'falta la tasa para contar los Bs' : (tr ? 'Bs a ' + bs(tr.v) + (tr.aprox ? ' (aprox.)' : '') : '')],
@@ -670,9 +755,9 @@ form.add select { width: 100%; }
       filas.map(function (x) {
         if (isEdit('cuentas', x.cu.id)) return editRow('cuentas', x.cu.id, 5, cuentaFields(x.cu));
         return '<tr><td class="det">' + esc(x.cu.nombre) + '<span class="hora">' + MON[x.cu.moneda] + (x.cu.terminacion ? ' · ****' + esc(x.cu.terminacion) : '') + '</span></td>' +
-          '<td class="r' + (x.v < 0 ? ' neg' : '') + '">' + dinero(x.cu.moneda, x.v) + '</td>' +
-          '<td class="r">' + (x.u == null ? '—' : usd(x.u)) + '</td>' +
-          '<td class="r">' + pendForm(x.cu.id, 'saldo_inicial', 'Saldo', 'cuentas') + '</td>' + delCell(x.cu.id, 'cuentas') + '</tr>';
+          '<td class="r' + (x.v < 0 ? ' neg' : '') + '" data-l="Saldo">' + dinero(x.cu.moneda, x.v) + '</td>' +
+          '<td class="r" data-l="En dólares">' + (x.u == null ? '—' : usd(x.u)) + '</td>' +
+          '<td class="r" data-l="Saldo inicial">' + pendForm(x.cu.id, 'saldo_inicial', 'Saldo', 'cuentas') + '</td>' + delCell(x.cu.id, 'cuentas') + '</tr>';
       }).join('') + '</tbody></table></div>';
 
     // Movimientos: cada traspaso (dos patas) se muestra como una sola fila
@@ -716,12 +801,12 @@ form.add select { width: 100%; }
         if (!it.tid && isEdit('cmovs', m.id)) return editRow('cmovs', m.id, 5, cmovFields(m));
         if (it.tid) {
           var a = it.sale && cuentaDe(it.sale.cuenta_id), b = it.entra && cuentaDe(it.entra.cuenta_id);
-          return '<tr>' + fecha + '<td class="det">' + esc(a ? a.nombre : '?') + ' → ' + esc(b ? b.nombre : '?') + '</td><td class="det">' + esc(m.detalle || 'Traspaso') + '</td>' +
-            '<td class="r">' + (a ? dinero(a.moneda, it.sale.monto) : '') + ' → ' + (b ? dinero(b.moneda, it.entra.monto) : '') + '</td>' + delCell(it.tid, 'traspasos') + '</tr>';
+          return '<tr>' + fecha + '<td class="det" data-l="Cuenta">' + esc(a ? a.nombre : '?') + ' → ' + esc(b ? b.nombre : '?') + '</td><td class="det">' + esc(m.detalle || 'Traspaso') + '</td>' +
+            '<td class="r" data-l="Monto">' + (a ? dinero(a.moneda, it.sale.monto) : '') + ' → ' + (b ? dinero(b.moneda, it.entra.monto) : '') + '</td>' + delCell(it.tid, 'traspasos') + '</tr>';
         }
         var cu = cuentaDe(m.cuenta_id), ing = m.tipo === 'ingreso';
-        return '<tr>' + fecha + '<td class="det">' + esc(cu ? cu.nombre : '?') + '</td><td class="det">' + esc(m.detalle || (ing ? 'Ingreso' : 'Egreso')) + '</td>' +
-          '<td class="r' + (ing ? '' : ' neg') + '">' + (ing ? '+' : '−') + (cu ? dinero(cu.moneda, m.monto) : bs(m.monto)) +
+        return '<tr>' + fecha + '<td class="det" data-l="Cuenta">' + esc(cu ? cu.nombre : '?') + '</td><td class="det">' + esc(m.detalle || (ing ? 'Ingreso' : 'Egreso')) + '</td>' +
+          '<td class="r' + (ing ? '' : ' neg') + '" data-l="Monto">' + (ing ? '+' : '−') + (cu ? dinero(cu.moneda, m.monto) : bs(m.monto)) +
           (cu && cu.moneda === 'BS' && m.tasa_bcv ? '<span class="hora">≈ ' + usd(m.monto / m.tasa_bcv) + ' · BCV ' + bs(Number(m.tasa_bcv)) + '</span>' : '') + '</td>' + delCell(m.id, 'cmovs') + '</tr>';
       }).join('') + '</tbody></table></div>';
   }
@@ -754,7 +839,7 @@ form.add select { width: 100%; }
     var ae = document.activeElement;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || (ae.closest && ae.closest('.editrow'))) && ($('#lista').contains(ae) || $('#cuentas').contains(ae))) { dirty = true; return; }
     dirty = false;
-    renderTasa(); renderBands(); renderAviso(); renderLista(); renderComercios(); renderResumen(); renderCuentas(); renderCalc();
+    renderTasa(); renderHero(); renderBands(); renderAviso(); renderLista(); renderComercios(); renderResumen(); renderCuentas(); renderCalc();
   }
 
   function setTab(t) {
