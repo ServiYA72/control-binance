@@ -767,8 +767,21 @@ form.add select { width: 100%; }
     render();
   }
 
-  async function guardar(fn, okMsg) {
-    try { var r = await fn(); if (r && r.error) throw r.error; if (okMsg) toast(okMsg); await cargar(); return true; }
+  // Aviso con botón Deshacer (8 segundos): undo() vuelve todo a como estaba
+  var undoFn = null;
+  function toastUndo(msg, fn) {
+    undoFn = fn;
+    var t = $('#toast'); t.innerHTML = esc(msg) + ' <button type="button" class="link" data-act="undo">Deshacer</button>'; t.hidden = false;
+    clearTimeout(toast.h); toast.h = setTimeout(function () { t.hidden = true; undoFn = null; }, 8000);
+  }
+  function conTabla(col) { return { movs: movs, cuentas: cuentas, cmovs: cmovs }[col] || []; }
+  function sinId(recs) { return recs.map(function (r) { var c = Object.assign({}, r); delete c.id; return c; }); }
+  function viejos(rec, patch) { var o = {}; Object.keys(patch).forEach(function (k) { o[k] = rec[k] == null ? null : rec[k]; }); return o; }
+  async function borrarIds(col, ids) {
+    for (var i = 0; i < ids.length; i++) { var r = await db.doc(col + '/' + ids[i]).delete(); if (r && r.error) return r; }
+  }
+  async function guardar(fn, okMsg, undo) {
+    try { var r = await fn(); if (r && r.error) throw r.error; if (undo && okMsg) toastUndo(okMsg, undo); else if (okMsg) toast(okMsg); await cargar(); return true; }
     catch (e) {
       toast(e && e.code === '42501' ? 'No tienes permiso para guardar.' : (e && e.code === '23503' ? 'Esa cuenta tiene movimientos, no se puede borrar.' : 'No se pudo guardar. Intenta de nuevo.'));
       return false;
@@ -778,6 +791,11 @@ form.add select { width: 100%; }
   document.addEventListener('click', async function (e) {
     var t = e.target.closest('[data-tab],[data-act]'); if (!t) return;
     if (t.dataset.tab) { setTab(t.dataset.tab); return; }
+    if (t.dataset.act === 'undo') {
+      var uf = undoFn; undoFn = null; $('#toast').hidden = true;
+      if (uf) await guardar(uf, 'Deshecho');
+      return;
+    }
     if (t.dataset.act === 'edit') { editando = { col: t.dataset.col, id: t.dataset.id }; pendingDel = null; render(); return; }
     if (t.dataset.act === 'edit-cancel') { editando = null; render(); return; }
     if (t.dataset.act === 'limpiar-filtro') { fMes = 'todos'; fDesde = ''; fHasta = ''; fTipo = 'todos'; fCuenta = 'todas'; renderLista(); renderCuentas(); return; }
@@ -788,7 +806,9 @@ form.add select { width: 100%; }
       var id = t.dataset.id, colDel = t.dataset.col || 'movs';
       if (pendingDel !== id) { pendingDel = id; render(); clearTimeout(setTab.h); setTab.h = setTimeout(function () { pendingDel = null; render(); }, 3000); return; }
       pendingDel = null;
-      await guardar(function () { return db.doc(colDel + '/' + id).delete(); }, 'Borrado');
+      var colRec = colDel === 'traspasos' ? 'cmovs' : colDel;
+      var recs = conTabla(colRec).filter(function (x) { return colDel === 'traspasos' ? x.traspaso_id === id : String(x.id) === id; });
+      await guardar(function () { return db.doc(colDel + '/' + id).delete(); }, 'Borrado', recs.length ? function () { return db.collection(colRec).add(sinId(recs)); } : null);
     }
     if (t.dataset.act === 'aplicar' && tasa) {
       t.disabled = true;
@@ -835,7 +855,9 @@ form.add select { width: 100%; }
       var val = num(f.querySelector('input').value, f.dataset.field === 'saldo_inicial');
       if (val == null) { toast('Escribe un número válido'); return; }
       var patch = {}; patch[f.dataset.field] = val;
-      await guardar(function () { return db.doc((f.dataset.col || 'movs') + '/' + f.dataset.id).update(patch); }, 'Guardado');
+      var colF = f.dataset.col || 'movs', recF = conTabla(colF).filter(function (x) { return String(x.id) === f.dataset.id; })[0];
+      var oldF = recF ? viejos(recF, patch) : null;
+      await guardar(function () { return db.doc(colF + '/' + f.dataset.id).update(patch); }, 'Guardado', oldF ? function () { return db.doc(colF + '/' + f.dataset.id).update(oldF); } : null);
       return;
     }
     if (f.id === 'f-cuenta') {
@@ -843,7 +865,8 @@ form.add select { width: 100%; }
       if (!nom) { toast('Escribe el nombre de la cuenta'); return; }
       var sal = String(fc.get('saldo') || '').trim() ? num(fc.get('saldo'), true) : 0;
       if (sal == null) { toast('El saldo no es un número válido'); return; }
-      var okc = await guardar(function () { return db.collection('cuentas').add({ nombre: nom, moneda: fc.get('moneda'), saldo_inicial: sal, terminacion: String(fc.get('terminacion') || '').trim() || null, orden: cuentas.length + 1 }); }, 'Cuenta agregada');
+      var idsC = [];
+      var okc = await guardar(async function () { var rc = await db.collection('cuentas').add({ nombre: nom, moneda: fc.get('moneda'), saldo_inicial: sal, terminacion: String(fc.get('terminacion') || '').trim() || null, orden: cuentas.length + 1 }); if (!rc.error && rc.data) idsC = rc.data.map(function (x) { return x.id; }); return rc; }, 'Cuenta agregada', function () { return borrarIds('cuentas', idsC); });
       if (okc) f.reset();
       return;
     }
@@ -866,7 +889,8 @@ form.add select { width: 100%; }
       }
       var bcvAhora = bcvHora(base.ts || (fe + 'T12:00:00'));
       filasMov.forEach(function (r) { var cu = cuentaDe(r.cuenta_id); if (cu && cu.moneda === 'BS' && bcvAhora) r.tasa_bcv = bcvAhora; });
-      var okm = await guardar(function () { return db.collection('cmovs').add(filasMov); }, 'Agregado');
+      var idsM = [];
+      var okm = await guardar(async function () { var rm = await db.collection('cmovs').add(filasMov); if (!rm.error && rm.data) idsM = rm.data.map(function (x) { return x.id; }); return rm; }, 'Agregado', function () { return borrarIds('cmovs', idsM); });
       if (okm) { f.elements['monto'].value = ''; f.elements['entra'].value = ''; f.elements['detalle'].value = ''; }
       return;
     }
@@ -888,7 +912,8 @@ form.add select { width: 100%; }
         var u = num(fd.get('usdt')); if (!u) { toast('Escribe los USDT'); return; }
         doc.usdt = u; doc.bs = num(fd.get('bs')) || null;
       }
-      var ok2 = await guardar(function () { return db.collection('movs').add(doc); }, 'Agregado');
+      var idsV = [];
+      var ok2 = await guardar(async function () { var rv = await db.collection('movs').add(doc); if (!rv.error && rv.data) idsV = rv.data.map(function (x) { return x.id; }); return rv; }, 'Agregado', function () { return borrarIds('movs', idsV); });
       if (ok2) { f.reset(); f.fecha.value = ymd(new Date()); }
     }
   });
@@ -898,7 +923,7 @@ form.add select { width: 100%; }
     var fe = fd.get('fecha'), patch = {}, rec;
     if (col !== 'cuentas' && !fe) { toast('Falta la fecha'); return; }
     var ts = function (r) { return fe !== r.fecha ? (fe === hoy ? new Date().toISOString() : null) : undefined; };
-    var accion;
+    var accion, deshacer = null;
     if (col === 'movs') {
       rec = movs.filter(function (x) { return x.id === id; })[0]; if (!rec) return;
       patch.fecha = fe; patch.detalle = String(fd.get('detalle') || '').trim();
@@ -913,11 +938,15 @@ form.add select { width: 100%; }
         patch.usdt = u; patch.bs = num(fd.get('bs')) || null;
       }
       if (ts(rec) !== undefined) patch.ts = ts(rec);
+      var oldV = viejos(rec, patch);
+      deshacer = function () { return db.doc('movs/' + id).update(oldV); };
       accion = function () { return db.doc('movs/' + id).update(patch); };
     } else if (col === 'cuentas') {
       var nom = String(fd.get('nombre') || '').trim(); if (!nom) { toast('Escribe el nombre'); return; }
       var sal = num(fd.get('saldo_inicial'), true); if (sal == null) { toast('El saldo no es un número válido'); return; }
       patch = { nombre: nom, saldo_inicial: sal, terminacion: String(fd.get('terminacion') || '').trim() || null };
+      var oldC = viejos(cuentas.filter(function (x) { return x.id === id; })[0] || {}, patch);
+      deshacer = function () { return db.doc('cuentas/' + id).update(oldC); };
       accion = function () { return db.doc('cuentas/' + id).update(patch); };
     } else if (col === 'cmovs') {
       rec = cmovs.filter(function (x) { return x.id === id; })[0]; if (!rec) return;
@@ -926,6 +955,8 @@ form.add select { width: 100%; }
       if (ts(rec) !== undefined) patch.ts = ts(rec);
       var cu2 = cuentaDe(patch.cuenta_id);
       patch.tasa_bcv = cu2 && cu2.moneda === 'BS' ? bcvHora(('ts' in patch ? patch.ts : rec.ts) || (fe + 'T12:00:00')) : null;
+      var oldM = viejos(rec, patch);
+      deshacer = function () { return db.doc('cmovs/' + id).update(oldM); };
       accion = function () { return db.doc('cmovs/' + id).update(patch); };
     } else if (col === 'traspasos') {
       var legs = cmovs.filter(function (x) { return x.traspaso_id === id; });
@@ -934,6 +965,12 @@ form.add select { width: 100%; }
       var ms = num(fd.get('monto_sale')), me = num(fd.get('monto_entra'));
       if (!ms || !me) { toast('Escribe los dos montos'); return; }
       var det = String(fd.get('detalle') || '').trim(), t2 = ts(sale);
+      deshacer = async function () {
+        for (var j = 0; j < legs.length; j++) {
+          var r0 = await db.doc('cmovs/' + legs[j].id).update(viejos(legs[j], { fecha: 1, detalle: 1, monto: 1, ts: 1, tasa_bcv: 1 }));
+          if (r0 && r0.error) return r0;
+        }
+      };
       accion = async function () {
         var legsNew = [[sale, ms], [entra, me]];
         for (var i = 0; i < legsNew.length; i++) {
@@ -948,7 +985,7 @@ form.add select { width: 100%; }
     } else return;
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     editando = null;
-    await guardar(accion, 'Cambios guardados');
+    await guardar(accion, 'Cambios guardados', deshacer);
   }
 
   function initForms() {
@@ -977,7 +1014,7 @@ form.add select { width: 100%; }
           delete: function () { return sb.from(tabla).delete().eq('id', id); }
         };
       },
-      collection: function (col) { return { add: function (doc) { return sb.from(TABLAS[col]).insert(doc); } }; }
+      collection: function (col) { return { add: function (doc) { return sb.from(TABLAS[col]).insert(doc).select('id'); } }; }
     };
   }
 
