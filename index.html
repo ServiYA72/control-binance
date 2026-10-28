@@ -259,6 +259,7 @@ form.add select { width: 100%; }
   var $ = function (s) { return document.querySelector(s); };
   var db = null, canWrite = true;
   var PANELES = ['resumen', 'cuentas', 'calc'];
+  var editando = null;
   var fMes = 'todos', fDesde = '', fHasta = '', fTipo = 'todos', fCuenta = 'todas';
   var movs = [], p2p = [], tasasH = [], cuentas = [], cmovs = [], mesSel = null, tasa = null, tab = 'gasto', pendingDel = null, dirty = false, loaded = false;
 
@@ -423,6 +424,7 @@ form.add select { width: 100%; }
     if (t === 'gasto') {
       head = '<th>Fecha</th><th>Comercio</th><th class="r">Bolívares</th><th class="r">Tasa</th><th class="r">Dólares</th><th class="r">Costo USDT</th><th class="r">Diferencia</th>' + fin;
       body = rows.map(function (m) {
+        if (edit && isEdit('movs', m.id)) return editRow('movs', m.id, 8, movFields(m));
         var d = derive(m);
         return '<tr><td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>' +
           '<td class="det">' + esc(m.detalle) + '</td>' +
@@ -439,6 +441,7 @@ form.add select { width: 100%; }
     } else {
       head = '<th>Fecha</th><th>Nota</th><th class="r">USDT</th><th class="r">Bolívares</th><th class="r">Tasa</th>' + fin;
       body = rows.map(function (m) {
+        if (edit && isEdit('movs', m.id)) return editRow('movs', m.id, 6, movFields(m));
         var d = derive(m);
         return '<tr><td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>' +
           '<td class="det">' + esc(m.detalle || '') + '</td>' +
@@ -461,10 +464,51 @@ form.add select { width: 100%; }
     var barra = '<div class="filtro">' + filtroFechasHtml('f-') + '<span class="filtro-tot">' + totLista(tab, rows) + '</span>' + quitarFiltroHtml() + '</div>';
     box.innerHTML = barra + (rows.length ? tablaHtml(tab, rows, true) : '<div class="tablebox"><div class="vacio">No hay movimientos con ese filtro.</div></div>');
   }
+  // ---- Editar una fila: se abre un formulario en su lugar ----
+  function isEdit(col, id) { return !!editando && editando.col === col && editando.id === id; }
+  function nIn(n) { return n == null ? '' : String(n).replace('.', ','); }
+  function lbl(t, inner, cls) { return '<label' + (cls ? ' class="' + cls + '"' : '') + '>' + t + inner + '</label>'; }
+  function editRow(col, id, ncols, fields) {
+    return '<tr class="editrow"><td colspan="' + ncols + '"><form class="add" data-act="edit-save" data-col="' + col + '" data-id="' + esc(id) + '" autocomplete="off">' + fields +
+      '<button class="main" type="submit">Guardar</button><button type="button" class="link" data-act="edit-cancel">Cancelar</button></form></td></tr>';
+  }
+  function fFecha(v) { return lbl('Fecha', '<input type="date" name="fecha" required value="' + esc(v) + '">'); }
+  function movFields(m) {
+    if (m.tipo === 'gasto') {
+      var tp = m.tasa_tipo || 'binance';
+      var opt = function (v, t) { return '<option value="' + v + '"' + (v === tp ? ' selected' : '') + '>' + t + '</option>'; };
+      return fFecha(m.fecha) + lbl('Comercio', '<input type="text" name="detalle" required value="' + esc(m.detalle || '') + '">', 'ancho') +
+        lbl('Bolívares', '<input class="num" name="bs" inputmode="decimal" required value="' + nIn(m.bs) + '">') +
+        lbl('Tasa', '<select name="tasa_tipo">' + opt('bcv', 'BCV') + opt('binance', 'Binance') + opt('manual', 'Otra (escribirla)') + '</select>') +
+        lbl('Tasa manual', '<input class="num" name="tasa" inputmode="decimal" value="' + (tp === 'manual' ? nIn(m.tasa) : '') + '">');
+    }
+    return fFecha(m.fecha) + lbl('USDT', '<input class="num" name="usdt" inputmode="decimal" required value="' + nIn(m.usdt) + '">') +
+      lbl('Bolívares', '<input class="num" name="bs" inputmode="decimal" value="' + nIn(m.bs) + '">') +
+      lbl('Nota', '<input type="text" name="detalle" value="' + esc(m.detalle || '') + '">', 'ancho');
+  }
+  function cuentaFields(cu) {
+    return lbl('Nombre', '<input type="text" name="nombre" required value="' + esc(cu.nombre) + '">', 'ancho') +
+      lbl('Terminación', '<input type="text" name="terminacion" maxlength="4" inputmode="numeric" value="' + esc(cu.terminacion || '') + '">') +
+      lbl('Saldo inicial (' + MON[cu.moneda] + ')', '<input class="num" name="saldo_inicial" inputmode="decimal" required value="' + nIn(cu.saldo_inicial) + '">');
+  }
+  function cmovFields(m) {
+    return fFecha(m.fecha) +
+      lbl('Cuenta', '<select name="cuenta_id">' + cuentas.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === m.cuenta_id ? ' selected' : '') + '>' + esc(c.nombre) + '</option>'; }).join('') + '</select>') +
+      lbl('Monto', '<input class="num" name="monto" inputmode="decimal" required value="' + nIn(m.monto) + '">') +
+      lbl('Detalle', '<input type="text" name="detalle" value="' + esc(m.detalle || '') + '">', 'ancho');
+  }
+  function traspasoFields(it) {
+    var a = it.sale && cuentaDe(it.sale.cuenta_id), b = it.entra && cuentaDe(it.entra.cuenta_id);
+    return fFecha(it.m.fecha) +
+      lbl('Sale de ' + esc(a ? a.nombre : '?'), '<input class="num" name="monto_sale" inputmode="decimal" required value="' + nIn(it.sale && it.sale.monto) + '">') +
+      lbl('Entra a ' + esc(b ? b.nombre : '?'), '<input class="num" name="monto_entra" inputmode="decimal" required value="' + nIn(it.entra && it.entra.monto) + '">') +
+      lbl('Detalle', '<input type="text" name="detalle" value="' + esc(it.m.detalle || '') + '">', 'ancho');
+  }
+
   function delCell(id, col) {
     if (!canWrite) return '<td></td>';
     var sure = pendingDel === id;
-    return '<td class="r"><button type="button" class="link' + (sure ? ' sure' : '') + '" data-act="del" data-col="' + (col || 'movs') + '" data-id="' + esc(id) + '">' + (sure ? '¿Borrar?' : 'Borrar') + '</button></td>';
+    return '<td class="r"><button type="button" class="link" data-act="edit" data-col="' + (col || 'movs') + '" data-id="' + esc(id) + '">Editar</button> <button type="button" class="link' + (sure ? ' sure' : '') + '" data-act="del" data-col="' + (col || 'movs') + '" data-id="' + esc(id) + '">' + (sure ? '¿Borrar?' : 'Borrar') + '</button></td>';
   }
 
   // Gasto en dólares por comercio, de mayor a menor: [nombre, dólares, cantidad de pagos]
@@ -625,6 +669,7 @@ form.add select { width: 100%; }
     $('#cu-cuentas').innerHTML = !filas.length ? '<div class="tablebox"><div class="vacio">Aún no hay cuentas. Agrega la primera abajo.</div></div>' :
       '<div class="tablebox"><table><thead><tr><th>Cuenta</th><th class="r">Saldo</th><th class="r">En dólares</th><th class="r">Cambiar saldo inicial</th><th></th></tr></thead><tbody>' +
       filas.map(function (x) {
+        if (isEdit('cuentas', x.cu.id)) return editRow('cuentas', x.cu.id, 5, cuentaFields(x.cu));
         return '<tr><td class="det">' + esc(x.cu.nombre) + '<span class="hora">' + MON[x.cu.moneda] + (x.cu.terminacion ? ' · ****' + esc(x.cu.terminacion) : '') + '</span></td>' +
           '<td class="r' + (x.v < 0 ? ' neg' : '') + '">' + dinero(x.cu.moneda, x.v) + '</td>' +
           '<td class="r">' + (x.u == null ? '—' : usd(x.u)) + '</td>' +
@@ -668,6 +713,8 @@ form.add select { width: 100%; }
       '<div class="tablebox"><table><thead><tr><th>Fecha</th><th>Cuenta</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>' +
       items.map(function (it) {
         var m = it.m, fecha = '<td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>';
+        if (it.tid && isEdit('traspasos', it.tid)) return editRow('traspasos', it.tid, 5, traspasoFields(it));
+        if (!it.tid && isEdit('cmovs', m.id)) return editRow('cmovs', m.id, 5, cmovFields(m));
         if (it.tid) {
           var a = it.sale && cuentaDe(it.sale.cuenta_id), b = it.entra && cuentaDe(it.entra.cuenta_id);
           return '<tr>' + fecha + '<td class="det">' + esc(a ? a.nombre : '?') + ' → ' + esc(b ? b.nombre : '?') + '</td><td class="det">' + esc(m.detalle || 'Traspaso') + '</td>' +
@@ -706,7 +753,7 @@ form.add select { width: 100%; }
 
   function render() {
     var ae = document.activeElement;
-    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT') && ($('#lista').contains(ae) || $('#cuentas').contains(ae))) { dirty = true; return; }
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || (ae.closest && ae.closest('.editrow'))) && ($('#lista').contains(ae) || $('#cuentas').contains(ae))) { dirty = true; return; }
     dirty = false;
     renderTasa(); renderBands(); renderAviso(); renderLista(); renderComercios(); renderResumen(); renderCuentas(); renderCalc();
   }
@@ -731,6 +778,8 @@ form.add select { width: 100%; }
   document.addEventListener('click', async function (e) {
     var t = e.target.closest('[data-tab],[data-act]'); if (!t) return;
     if (t.dataset.tab) { setTab(t.dataset.tab); return; }
+    if (t.dataset.act === 'edit') { editando = { col: t.dataset.col, id: t.dataset.id }; pendingDel = null; render(); return; }
+    if (t.dataset.act === 'edit-cancel') { editando = null; render(); return; }
     if (t.dataset.act === 'limpiar-filtro') { fMes = 'todos'; fDesde = ''; fHasta = ''; fTipo = 'todos'; fCuenta = 'todas'; renderLista(); renderCuentas(); return; }
     if (t.dataset.act === 'salir') { await sb.auth.signOut(); return; }
     if (t.dataset.act === 'registro') { await registrar(); return; }
@@ -781,6 +830,7 @@ form.add select { width: 100%; }
     if (f.id === 'f-calc') return;
     if (!db) { toast('Los datos no están conectados todavía.'); return; }
 
+    if (f.dataset.act === 'edit-save') { await guardarEdicion(f); return; }
     if (f.dataset.act === 'fix') {
       var val = num(f.querySelector('input').value, f.dataset.field === 'saldo_inicial');
       if (val == null) { toast('Escribe un número válido'); return; }
@@ -842,6 +892,64 @@ form.add select { width: 100%; }
       if (ok2) { f.reset(); f.fecha.value = ymd(new Date()); }
     }
   });
+
+  async function guardarEdicion(f) {
+    var col = f.dataset.col, id = f.dataset.id, fd = new FormData(f), hoy = ymd(new Date());
+    var fe = fd.get('fecha'), patch = {}, rec;
+    if (col !== 'cuentas' && !fe) { toast('Falta la fecha'); return; }
+    var ts = function (r) { return fe !== r.fecha ? (fe === hoy ? new Date().toISOString() : null) : undefined; };
+    var accion;
+    if (col === 'movs') {
+      rec = movs.filter(function (x) { return x.id === id; })[0]; if (!rec) return;
+      patch.fecha = fe; patch.detalle = String(fd.get('detalle') || '').trim();
+      if (rec.tipo === 'gasto') {
+        var b = num(fd.get('bs')); if (!b) { toast('Escribe los bolívares'); return; }
+        if (!patch.detalle) { toast('Escribe el comercio'); return; }
+        patch.bs = b; patch.tasa_tipo = fd.get('tasa_tipo');
+        if (patch.tasa_tipo === 'manual') { patch.tasa = num(fd.get('tasa')); if (!patch.tasa) { toast('Escribe la tasa manual'); return; } }
+        else if (patch.tasa_tipo === 'bcv') patch.tasa = null;
+      } else {
+        var u = num(fd.get('usdt')); if (!u) { toast('Escribe los USDT'); return; }
+        patch.usdt = u; patch.bs = num(fd.get('bs')) || null;
+      }
+      if (ts(rec) !== undefined) patch.ts = ts(rec);
+      accion = function () { return db.doc('movs/' + id).update(patch); };
+    } else if (col === 'cuentas') {
+      var nom = String(fd.get('nombre') || '').trim(); if (!nom) { toast('Escribe el nombre'); return; }
+      var sal = num(fd.get('saldo_inicial'), true); if (sal == null) { toast('El saldo no es un número válido'); return; }
+      patch = { nombre: nom, saldo_inicial: sal, terminacion: String(fd.get('terminacion') || '').trim() || null };
+      accion = function () { return db.doc('cuentas/' + id).update(patch); };
+    } else if (col === 'cmovs') {
+      rec = cmovs.filter(function (x) { return x.id === id; })[0]; if (!rec) return;
+      var mo = num(fd.get('monto')); if (!mo) { toast('Escribe el monto'); return; }
+      patch = { fecha: fe, cuenta_id: fd.get('cuenta_id'), monto: mo, detalle: String(fd.get('detalle') || '').trim() };
+      if (ts(rec) !== undefined) patch.ts = ts(rec);
+      var cu2 = cuentaDe(patch.cuenta_id);
+      patch.tasa_bcv = cu2 && cu2.moneda === 'BS' ? bcvHora(('ts' in patch ? patch.ts : rec.ts) || (fe + 'T12:00:00')) : null;
+      accion = function () { return db.doc('cmovs/' + id).update(patch); };
+    } else if (col === 'traspasos') {
+      var legs = cmovs.filter(function (x) { return x.traspaso_id === id; });
+      var sale = legs.filter(function (x) { return x.tipo === 'egreso'; })[0], entra = legs.filter(function (x) { return x.tipo === 'ingreso'; })[0];
+      if (!sale || !entra) return;
+      var ms = num(fd.get('monto_sale')), me = num(fd.get('monto_entra'));
+      if (!ms || !me) { toast('Escribe los dos montos'); return; }
+      var det = String(fd.get('detalle') || '').trim(), t2 = ts(sale);
+      accion = async function () {
+        var legsNew = [[sale, ms], [entra, me]];
+        for (var i = 0; i < legsNew.length; i++) {
+          var p = { fecha: fe, detalle: det, monto: legsNew[i][1] };
+          if (t2 !== undefined) p.ts = t2;
+          var c3 = cuentaDe(legsNew[i][0].cuenta_id);
+          p.tasa_bcv = c3 && c3.moneda === 'BS' ? bcvHora(('ts' in p ? p.ts : legsNew[i][0].ts) || (fe + 'T12:00:00')) : null;
+          var r = await db.doc('cmovs/' + legsNew[i][0].id).update(p);
+          if (r && r.error) return r;
+        }
+      };
+    } else return;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    editando = null;
+    await guardar(accion, 'Cambios guardados');
+  }
 
   function initForms() {
     ['gasto', 'venta', 'compra'].forEach(function (k) { $('#f-' + k).fecha.value = ymd(new Date()); });
