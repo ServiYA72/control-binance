@@ -112,6 +112,8 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 form.add select { width: 100%; }
 .neg { color: var(--bad); }
 #cuentas { display: flex; flex-direction: column; gap: 20px; }
+.tasa-val { font-size: 24px; font-weight: 500; }
+#calc { display: flex; flex-direction: column; gap: 20px; }
 .vacio { padding: 28px 16px; text-align: center; color: var(--ink-2); }
 .vacio strong { display: block; color: var(--ink); margin-bottom: 4px; font-weight: 600; }
 .comercios { display: flex; flex-direction: column; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
@@ -144,14 +146,11 @@ form.add select { width: 100%; }
       <p>Tarjeta Mastercard y compra/venta de USDT</p>
       <p class="quien"><span id="quien"></span> <button type="button" class="link" data-act="salir">Salir</button></p>
     </div>
-    <form class="tasa" id="f-tasa" autocomplete="off">
-      <label for="tasa-in">Tasa del día (Bs por USDT, Binance P2P)</label>
-      <div class="row">
-        <input id="tasa-in" class="num" inputmode="decimal" placeholder="Ej: 650,00" aria-describedby="tasa-nota">
-        <button class="main" type="submit">Guardar</button>
-      </div>
-      <small id="tasa-nota">Sin definir</small>
-    </form>
+    <div class="tasa" id="tasa-box">
+      <label>Tasa de hoy (Bs por USDT, Binance P2P)</label>
+      <div class="tasa-val num" id="tasa-val">—</div>
+      <small id="tasa-nota">Sin datos todavía</small>
+    </div>
   </header>
 
   <section aria-label="Gastos en dólares">
@@ -163,6 +162,7 @@ form.add select { width: 100%; }
     <button role="tab" id="tab-venta" aria-selected="false" data-tab="venta">Ventas USDT</button>
     <button role="tab" id="tab-compra" aria-selected="false" data-tab="compra">Compras USDT</button>
     <button role="tab" id="tab-cuentas" aria-selected="false" data-tab="cuentas">Cuentas</button>
+    <button role="tab" id="tab-calc" aria-selected="false" data-tab="calc">Calculadora</button>
     <button role="tab" id="tab-resumen" aria-selected="false" data-tab="resumen">Resumen</button>
   </div>
 
@@ -194,6 +194,21 @@ form.add select { width: 100%; }
 
   <div id="lista"></div>
   <div id="resumen" hidden></div>
+  <div id="calc" hidden>
+    <div class="band" id="calc-band"></div>
+    <section><h2>Convertir</h2>
+      <form class="add" id="f-calc" autocomplete="off">
+        <label>Monto<input class="num" name="monto" inputmode="decimal" placeholder="Ej: 100" value="1"></label>
+        <label>Tengo<select name="de">
+          <option value="usd">Dólares (BCV)</option>
+          <option value="binance">USDT / dólares (Binance)</option>
+          <option value="eur">Euros (BCV)</option>
+          <option value="bs">Bolívares</option>
+        </select></label>
+      </form>
+    </section>
+    <section><h2>Equivale a</h2><div id="calc-res"></div></section>
+  </div>
   <div id="cuentas" hidden>
     <div class="band" id="cu-band"></div>
     <section><h2>Mis cuentas</h2><div id="cu-cuentas"></div></section>
@@ -227,7 +242,8 @@ form.add select { width: 100%; }
 (function () {
   var $ = function (s) { return document.querySelector(s); };
   var db = null, canWrite = true;
-  var movs = [], p2p = [], cuentas = [], cmovs = [], mesSel = null, tasa = null, tab = 'gasto', pendingDel = null, dirty = false, loaded = false;
+  var PANELES = ['resumen', 'cuentas', 'calc'];
+  var movs = [], p2p = [], tasasH = [], cuentas = [], cmovs = [], mesSel = null, tasa = null, tab = 'gasto', pendingDel = null, dirty = false, loaded = false;
 
   var nf = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   var bs = function (n) { return n == null ? '—' : nf.format(n); };
@@ -257,6 +273,22 @@ form.add select { width: 100%; }
     clearTimeout(toast.h); toast.h = setTimeout(function () { t.hidden = true; }, 3500);
   };
 
+  // Última tasa conocida de cada tipo (BCV dólar, BCV euro, Binance)
+  function tasasAct() {
+    var r = { bcv_usd: null, bcv_eur: null, binance: null };
+    tasasH.forEach(function (x) { Object.keys(r).forEach(function (k) { if (r[k] == null && x[k] != null) r[k] = x[k]; }); });
+    return r;
+  }
+  // Tasa Binance guardada más cerca de la hora del pago (máximo 90 minutos de diferencia)
+  function tasaHora(m) {
+    var t = new Date(ordenKey(m)).getTime(), best = null, dist = Infinity;
+    for (var i = 0; i < tasasH.length; i++) {
+      if (tasasH[i].binance == null) continue;
+      var dd = Math.abs(tasasH[i].t - t);
+      if (dd < dist) { dist = dd; best = tasasH[i].binance; }
+    }
+    return dist <= 90 * 60 * 1000 ? best : null;
+  }
   function ordenKey(m) { return m.ts || (m.fecha + 'T12:00:00'); }
   // Tasa aproximada: la de la compra/venta P2P más cercana en el tiempo
   function tasaAprox(m) {
@@ -270,9 +302,12 @@ form.add select { width: 100%; }
   }
   function derive(m) {
     if (m.tipo === 'gasto') {
-      var t = m.tasa || null, aprox = false;
-      if (!t && m.usd == null) { t = tasaAprox(m); aprox = !!t; }
-      return { usdt: m.usd != null ? m.usd : (m.bs && t ? m.bs / t : null), bs: m.bs || null, tasa: t, aprox: aprox };
+      var t = m.tasa || null, aprox = false, hora = false;
+      if (!t && m.usd == null) {
+        t = tasaHora(m); hora = !!t;
+        if (!t) { t = tasaAprox(m); aprox = !!t; }
+      }
+      return { usdt: m.usd != null ? m.usd : (m.bs && t ? m.bs / t : null), bs: m.bs || null, tasa: t, aprox: aprox, hora: hora };
     }
     return { usdt: m.usdt, bs: m.bs || null, tasa: m.bs && m.usdt ? m.bs / m.usdt : null };
   }
@@ -295,12 +330,15 @@ form.add select { width: 100%; }
   }
 
   function renderTasa() {
-    var n = $('#tasa-nota');
-    if (!tasa) { n.textContent = 'Sin definir'; n.className = ''; return; }
-    var hoy = tasa.fecha === ymd(new Date());
-    n.textContent = hoy ? 'Guardada hoy: ' + bs(tasa.valor) : 'Guardada el ' + fechaTxt(tasa.fecha) + ': ' + bs(tasa.valor) + ' (actualízala)';
-    n.className = hoy ? '' : 'vieja';
-    if (document.activeElement !== $('#tasa-in') && !$('#tasa-in').value) $('#tasa-in').value = String(tasa.valor).replace('.', ',');
+    var v = $('#tasa-val'), n = $('#tasa-nota');
+    if (!tasa) { v.textContent = '—'; n.textContent = 'Sin datos todavía'; n.className = ''; return; }
+    var d = new Date(tasa.momento), act = tasasAct(), partes = [];
+    if (act.bcv_usd) partes.push('BCV $ ' + bs(act.bcv_usd));
+    if (act.bcv_eur) partes.push('€ ' + bs(act.bcv_eur));
+    var viejo = Date.now() - d.getTime() > 3 * 3600 * 1000;
+    v.textContent = bs(tasa.valor) + ' Bs';
+    n.textContent = 'Actualizada ' + fechaTxt(ymd(d)) + ' ' + horaTxt(tasa.momento) + (partes.length ? ' · ' + partes.join(' · ') : '');
+    n.className = viejo ? 'vieja' : '';
   }
 
   function bandHtml(items) {
@@ -321,7 +359,7 @@ form.add select { width: 100%; }
     ]);
 
     var sb = $('#band-sec');
-    if (tab === 'gasto' || tab === 'resumen' || tab === 'cuentas') { sb.hidden = true; return; }
+    if (tab === 'gasto' || PANELES.indexOf(tab) > -1) { sb.hidden = true; return; }
     var rows = ofTipo(tab), mesRows = rows.filter(function (m) { return m.fecha.slice(0, 7) === mes; });
     var prom = promTasa(rows);
     var verbo = tab === 'venta' ? 'vendidos' : 'comprados';
@@ -338,7 +376,7 @@ form.add select { width: 100%; }
     if (tab !== 'gasto' || !g.length) { a.hidden = true; return; }
     a.hidden = false;
     a.innerHTML = '<span>' + g.length + (g.length === 1 ? ' pago no tiene tasa.' : ' pagos no tienen tasa.') + ' Sin tasa no se calculan los dólares.</span>' +
-      (tasa && canWrite ? '<button type="button" data-act="aplicar">Aplicar tasa guardada (' + esc(bs(tasa.valor)) + ')</button>' : '<span>Guarda la tasa del día arriba.</span>');
+      (tasa && canWrite ? '<button type="button" data-act="aplicar">Aplicar la tasa de hoy (' + esc(bs(tasa.valor)) + ')</button>' : '<span>Aún no hay tasa automática.</span>');
   }
 
   function pendForm(id, field, ph, col) {
@@ -355,8 +393,8 @@ form.add select { width: 100%; }
         return '<tr><td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>' +
           '<td class="det">' + esc(m.detalle) + '</td>' +
           '<td class="r">' + bs(d.bs) + '</td>' +
-          '<td class="r tcell">' + (d.aprox
-            ? bs(d.tasa) + '<span class="aprox" title="Tasa de tu compra o venta P2P más cercana a esa hora">aprox.</span>' + (edit && canWrite ? pendForm(m.id, 'tasa', 'Cambiar') : '')
+          '<td class="r tcell">' + (d.aprox || d.hora
+            ? bs(d.tasa) + (d.hora ? '<span class="aprox" title="Tasa de Binance P2P guardada a esa hora">de esa hora</span>' : '<span class="aprox" title="Tasa de tu compra o venta P2P más cercana a esa hora">aprox.</span>') + (edit && canWrite ? pendForm(m.id, 'tasa', 'Cambiar') : '')
             : (d.tasa ? bs(d.tasa) : (edit && canWrite && m.usd == null ? pendForm(m.id, 'tasa', 'Tasa') : '—'))) + '</td>' +
           '<td class="r">' + usd(d.usdt) + '</td>' + cel(m) + '</tr>';
       }).join('');
@@ -376,7 +414,7 @@ form.add select { width: 100%; }
 
   function renderLista() {
     var rows = ofTipo(tab), box = $('#lista');
-    if (!loaded || tab === 'resumen' || tab === 'cuentas') { box.innerHTML = ''; return; }
+    if (!loaded || PANELES.indexOf(tab) > -1) { box.innerHTML = ''; return; }
     if (!rows.length) {
       var txt = { gasto: ['Aún no hay pagos', 'Agrega el primero arriba, o pídele a Claude que cargue los pagos nuevos desde tu Gmail.'], venta: ['Aún no hay ventas de USDT', 'Agrega la primera arriba, o pídele a Claude que cargue las órdenes P2P desde tu Gmail.'], compra: ['Aún no hay compras de USDT', 'Agrega la primera arriba, o pídele a Claude que cargue las órdenes P2P desde tu Gmail.'] }[tab];
       box.innerHTML = '<div class="tablebox"><div class="vacio"><strong>' + txt[0] + '</strong>' + txt[1] + '</div></div>';
@@ -546,16 +584,40 @@ form.add select { width: 100%; }
       }).join('') + '</tbody></table></div>';
   }
 
+  // ---- Calculadora ----
+  function renderCalc() {
+    var c = $('#calc');
+    if (tab !== 'calc' || !loaded) { c.hidden = true; return; }
+    c.hidden = false;
+    var a = tasasAct(), f = $('#f-calc');
+    var tiene = { usd: a.bcv_usd, binance: a.binance, eur: a.bcv_eur, bs: 1 };
+    var nombres = { usd: 'Dólares (BCV)', binance: 'USDT / dólares (Binance)', eur: 'Euros (BCV)', bs: 'Bolívares' };
+    var brecha = a.bcv_usd && a.binance ? (a.binance / a.bcv_usd - 1) * 100 : null;
+    $('#calc-band').innerHTML = bandHtml([
+      ['Dólar BCV', a.bcv_usd ? bs(a.bcv_usd) + ' Bs' : '—'],
+      ['Binance P2P', a.binance ? bs(a.binance) + ' Bs' : '—', brecha != null ? 'brecha con el BCV: ' + nf.format(brecha) + '%' : ''],
+      ['Euro BCV', a.bcv_eur ? bs(a.bcv_eur) + ' Bs' : '—']
+    ]);
+    var monto = num(f.elements['monto'].value, true), de = f.elements['de'].value;
+    if (monto == null || !tiene[de]) { $('#calc-res').innerHTML = '<div class="tablebox"><div class="vacio">Escribe un monto' + (tiene[de] ? '' : ' (falta la tasa de esa moneda)') + '.</div></div>'; return; }
+    var enBs = monto * tiene[de];
+    var fmt = { usd: function (n) { return usd(n); }, binance: function (n) { return nf.format(n) + ' USDT'; }, eur: function (n) { return '€' + nf.format(n); }, bs: function (n) { return bs(n) + ' Bs'; } };
+    $('#calc-res').innerHTML = '<div class="tablebox"><table><thead><tr><th>Moneda</th><th class="r">Equivale a</th><th class="r">Tasa usada</th></tr></thead><tbody>' +
+      ['bs', 'usd', 'binance', 'eur'].filter(function (k) { return k !== de; }).map(function (k) {
+        return '<tr><td>' + nombres[k] + '</td><td class="r">' + (tiene[k] ? fmt[k](enBs / tiene[k]) : '—') + '</td><td class="r">' + (k === 'bs' ? '—' : (tiene[k] ? bs(tiene[k]) + ' Bs' : 'sin dato')) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
   function render() {
     var ae = document.activeElement;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT') && ($('#lista').contains(ae) || $('#cuentas').contains(ae))) { dirty = true; return; }
     dirty = false;
-    renderTasa(); renderBands(); renderAviso(); renderLista(); renderComercios(); renderResumen(); renderCuentas();
+    renderTasa(); renderBands(); renderAviso(); renderLista(); renderComercios(); renderResumen(); renderCuentas(); renderCalc();
   }
 
   function setTab(t) {
     tab = t; pendingDel = null;
-    ['gasto', 'venta', 'compra', 'cuentas', 'resumen'].forEach(function (k) {
+    ['gasto', 'venta', 'compra', 'cuentas', 'calc', 'resumen'].forEach(function (k) {
       $('#tab-' + k).setAttribute('aria-selected', k === t ? 'true' : 'false');
       var f = $('#f-' + k); if (f) f.hidden = !(k === t) || !canWrite;
     });
@@ -593,7 +655,11 @@ form.add select { width: 100%; }
     }
   });
 
+  document.addEventListener('input', function (e) {
+    if (e.target.closest && e.target.closest('#f-calc')) renderCalc();
+  });
   document.addEventListener('change', function (e) {
+    if (e.target.closest && e.target.closest('#f-calc')) renderCalc();
     if (e.target.id === 'mes-sel') { mesSel = e.target.value; renderResumen(true); }
     if (e.target.id === 'cm-tipo' || e.target.id === 'cm-cuenta' || e.target.id === 'cm-destino') ajustarFormMov();
   });
@@ -604,14 +670,9 @@ form.add select { width: 100%; }
     e.preventDefault();
     var f = e.target;
     if (f.id === 'f-login' || f.id === 'login') { await entrarConClave(); return; }
+    if (f.id === 'f-calc') return;
     if (!db) { toast('Los datos no están conectados todavía.'); return; }
 
-    if (f.id === 'f-tasa') {
-      var v = num($('#tasa-in').value);
-      if (!v) { toast('Escribe la tasa en bolívares, por ejemplo 650,00'); return; }
-      await guardar(function () { return db.doc('ajustes/tasa').set({ valor: v, fecha: ymd(new Date()) }); }, 'Tasa guardada');
-      return;
-    }
     if (f.dataset.act === 'fix') {
       var val = num(f.querySelector('input').value, f.dataset.field === 'saldo_inicial');
       if (val == null) { toast('Escribe un número válido'); return; }
@@ -719,8 +780,18 @@ form.add select { width: 100%; }
       if (pg.data.length < 1000) { cmovs = todos; break; }
       desde += 1000;
     }
-    var t = await sb.from('binance_ajustes').select('*').eq('clave', 'tasa').maybeSingle();
-    tasa = t.data ? { valor: Number(t.data.valor), fecha: t.data.fecha } : null;
+    var hist = [], dh = 0, desde90 = new Date(Date.now() - 90 * 86400000).toISOString();
+    for (;;) {
+      var pt = await sb.from('binance_tasas').select('*').gte('momento', desde90).order('momento', { ascending: false }).range(dh, dh + 999);
+      if (pt.error) break;
+      hist = hist.concat(pt.data);
+      if (pt.data.length < 1000) break;
+      dh += 1000;
+    }
+    var nn = function (v) { return v == null ? null : Number(v); };
+    tasasH = hist.map(function (x) { return { t: new Date(x.momento).getTime(), bcv_usd: nn(x.bcv_usd), bcv_eur: nn(x.bcv_eur), binance: nn(x.binance) }; });
+    var ult = tasasH.filter(function (x) { return x.binance != null; })[0];
+    tasa = ult ? { valor: ult.binance, momento: new Date(ult.t).toISOString() } : null;
     loaded = true; $('#estado').hidden = true; render();
   }
 
@@ -746,7 +817,7 @@ form.add select { width: 100%; }
       canalListo = true;
       sb.channel('binance')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_movs' }, cargar)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_ajustes' }, cargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_tasas' }, cargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_cuentas' }, cargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_cmovs' }, cargar)
         .subscribe();
