@@ -109,6 +109,9 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #login .fila button { flex: 1; }
 #login p { margin: 0; font-size: 13px; color: var(--ink-2); }
 .quien { font-size: 12px; color: var(--ink-2); }
+form.add select { width: 100%; }
+.neg { color: var(--bad); }
+#cuentas { display: flex; flex-direction: column; gap: 20px; }
 .vacio { padding: 28px 16px; text-align: center; color: var(--ink-2); }
 .vacio strong { display: block; color: var(--ink); margin-bottom: 4px; font-weight: 600; }
 .comercios { display: flex; flex-direction: column; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
@@ -159,6 +162,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     <button role="tab" id="tab-gasto" aria-selected="true" data-tab="gasto">Gastos tarjeta</button>
     <button role="tab" id="tab-venta" aria-selected="false" data-tab="venta">Ventas USDT</button>
     <button role="tab" id="tab-compra" aria-selected="false" data-tab="compra">Compras USDT</button>
+    <button role="tab" id="tab-cuentas" aria-selected="false" data-tab="cuentas">Cuentas</button>
     <button role="tab" id="tab-resumen" aria-selected="false" data-tab="resumen">Resumen</button>
   </div>
 
@@ -190,6 +194,31 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   <div id="lista"></div>
   <div id="resumen" hidden></div>
+  <div id="cuentas" hidden>
+    <div class="band" id="cu-band"></div>
+    <section><h2>Mis cuentas</h2><div id="cu-cuentas"></div></section>
+    <section><h2>Nuevo movimiento</h2>
+      <form class="add" id="f-cmov" autocomplete="off">
+        <label>Fecha<input type="date" name="fecha" required></label>
+        <label>Tipo<select name="tipo" id="cm-tipo"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option><option value="traspaso">Traspaso entre cuentas</option></select></label>
+        <label><span id="cm-lbl-cuenta">Cuenta</span><select name="cuenta" id="cm-cuenta"></select></label>
+        <label id="cm-box-destino" hidden>Pasa a<select name="destino" id="cm-destino"></select></label>
+        <label><span id="cm-lbl-monto">Monto</span><input class="num" name="monto" inputmode="decimal" required placeholder="0,00"></label>
+        <label id="cm-box-entra" hidden><span id="cm-lbl-entra">Monto que entra</span><input class="num" name="entra" inputmode="decimal" placeholder="0,00"></label>
+        <label class="ancho">Detalle (opcional)<input type="text" name="detalle" placeholder="Ej: sueldo, mercado, transferencia"></label>
+        <button class="main" type="submit">Agregar movimiento</button>
+      </form>
+    </section>
+    <section><h2>Movimientos de las cuentas</h2><div id="cu-lista"></div></section>
+    <section><h2>Agregar una cuenta</h2>
+      <form class="add" id="f-cuenta" autocomplete="off">
+        <label class="ancho">Nombre<input type="text" name="nombre" required placeholder="Ej: Banesco"></label>
+        <label>Moneda<select name="moneda"><option value="BS">Bolívares</option><option value="USD">Dólares</option><option value="USDT">USDT</option></select></label>
+        <label>Saldo hoy<input class="num" name="saldo" inputmode="decimal" placeholder="0,00"></label>
+        <button class="main" type="submit">Agregar cuenta</button>
+      </form>
+    </section>
+  </div>
   <div id="comercios" hidden></div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -198,7 +227,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 (function () {
   var $ = function (s) { return document.querySelector(s); };
   var db = null, canWrite = true;
-  var movs = [], p2p = [], mesSel = null, tasa = null, tab = 'gasto', pendingDel = null, dirty = false, loaded = false;
+  var movs = [], p2p = [], cuentas = [], cmovs = [], mesSel = null, tasa = null, tab = 'gasto', pendingDel = null, dirty = false, loaded = false;
 
   var nf = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   var bs = function (n) { return n == null ? '—' : nf.format(n); };
@@ -207,12 +236,12 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   var ymd = function (d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
   var parseDay = function (s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
-  var num = function (s) {
+  var num = function (s, cero) {
     s = String(s == null ? '' : s).trim().replace(/\s/g, '');
     if (!s) return null;
     if (s.indexOf(',') > -1) s = s.replace(/\./g, '').replace(',', '.');
     var n = parseFloat(s);
-    return isFinite(n) && n > 0 ? n : null;
+    return isFinite(n) && (cero ? n >= 0 : n > 0) ? n : null;
   };
   var fechaTxt = function (f) {
     var d = parseDay(f), y = d.getFullYear() !== new Date().getFullYear();
@@ -292,7 +321,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     ]);
 
     var sb = $('#band-sec');
-    if (tab === 'gasto' || tab === 'resumen') { sb.hidden = true; return; }
+    if (tab === 'gasto' || tab === 'resumen' || tab === 'cuentas') { sb.hidden = true; return; }
     var rows = ofTipo(tab), mesRows = rows.filter(function (m) { return m.fecha.slice(0, 7) === mes; });
     var prom = promTasa(rows);
     var verbo = tab === 'venta' ? 'vendidos' : 'comprados';
@@ -312,8 +341,8 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       (tasa && canWrite ? '<button type="button" data-act="aplicar">Aplicar tasa guardada (' + esc(bs(tasa.valor)) + ')</button>' : '<span>Guarda la tasa del día arriba.</span>');
   }
 
-  function pendForm(id, field, ph) {
-    return '<form class="pend" data-act="fix" data-id="' + esc(id) + '" data-field="' + field + '"><input class="num" inputmode="decimal" placeholder="' + ph + '" aria-label="' + ph + '"><button type="submit">Poner</button></form>';
+  function pendForm(id, field, ph, col) {
+    return '<form class="pend" data-act="fix" data-id="' + esc(id) + '" data-col="' + (col || 'movs') + '" data-field="' + field + '"><input class="num" inputmode="decimal" placeholder="' + ph + '" aria-label="' + ph + '"><button type="submit">Poner</button></form>';
   }
 
   // Tabla de movimientos; edit=false la deja de solo lectura (para el resumen)
@@ -347,7 +376,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   function renderLista() {
     var rows = ofTipo(tab), box = $('#lista');
-    if (!loaded || tab === 'resumen') { box.innerHTML = ''; return; }
+    if (!loaded || tab === 'resumen' || tab === 'cuentas') { box.innerHTML = ''; return; }
     if (!rows.length) {
       var txt = { gasto: ['Aún no hay pagos', 'Agrega el primero arriba, o pídele a Claude que cargue los pagos nuevos desde tu Gmail.'], venta: ['Aún no hay ventas de USDT', 'Agrega la primera arriba, o pídele a Claude que cargue las órdenes P2P desde tu Gmail.'], compra: ['Aún no hay compras de USDT', 'Agrega la primera arriba, o pídele a Claude que cargue las órdenes P2P desde tu Gmail.'] }[tab];
       box.innerHTML = '<div class="tablebox"><div class="vacio"><strong>' + txt[0] + '</strong>' + txt[1] + '</div></div>';
@@ -355,10 +384,10 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     }
     box.innerHTML = tablaHtml(tab, rows, true);
   }
-  function delCell(id) {
+  function delCell(id, col) {
     if (!canWrite) return '<td></td>';
     var sure = pendingDel === id;
-    return '<td class="r"><button type="button" class="link' + (sure ? ' sure' : '') + '" data-act="del" data-id="' + esc(id) + '">' + (sure ? '¿Borrar?' : 'Borrar') + '</button></td>';
+    return '<td class="r"><button type="button" class="link' + (sure ? ' sure' : '') + '" data-act="del" data-col="' + (col || 'movs') + '" data-id="' + esc(id) + '">' + (sure ? '¿Borrar?' : 'Borrar') + '</button></td>';
   }
 
   // Gasto en dólares por comercio, de mayor a menor: [nombre, dólares, cantidad de pagos]
@@ -435,16 +464,98 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       p2pSec('Compras de USDT', 'comprados', 'Bs pagados', compras, 'compra');
   }
 
+  // ---- Cuentas ----
+  var MON = { USD: 'Dólares', USDT: 'USDT', BS: 'Bolívares' };
+  function dinero(mon, n) { return mon === 'BS' ? bs(n) + ' Bs' : (mon === 'USD' ? usd(n) : nf.format(n) + ' USDT'); }
+  function cuentaDe(id) { return cuentas.filter(function (c) { return c.id === id; })[0]; }
+  function saldoDe(c) {
+    var v = Number(c.saldo_inicial) || 0;
+    cmovs.forEach(function (m) { if (m.cuenta_id === c.id) v += (m.tipo === 'ingreso' ? 1 : -1) * Number(m.monto); });
+    return v;
+  }
+  // Tasa para pasar bolívares a dólares: la guardada arriba; si no hay, la de tu P2P más reciente
+  function tasaRef() {
+    if (tasa && tasa.valor) return { v: tasa.valor, aprox: false };
+    var a = tasaAprox({ fecha: ymd(new Date()) });
+    return a ? { v: a, aprox: true } : null;
+  }
+
+  function llenarSelects() {
+    ['#cm-cuenta', '#cm-destino'].forEach(function (id) {
+      var el = $(id), v = el.value;
+      el.innerHTML = cuentas.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.nombre) + ' (' + MON[c.moneda] + ')</option>'; }).join('');
+      if (v && cuentaDe(v)) el.value = v;
+    });
+    ajustarFormMov();
+  }
+  function ajustarFormMov() {
+    var f = $('#f-cmov'), tipo = f.elements['tipo'].value, o = cuentaDe(f.elements['cuenta'].value), d = cuentaDe(f.elements['destino'].value);
+    var tras = tipo === 'traspaso', dist = tras && o && d && o.moneda !== d.moneda;
+    $('#cm-box-destino').hidden = !tras;
+    $('#cm-box-entra').hidden = !dist;
+    $('#cm-lbl-cuenta').textContent = tras ? 'Sale de' : 'Cuenta';
+    $('#cm-lbl-monto').textContent = (tras ? 'Monto que sale' : 'Monto') + (o ? ' (' + MON[o.moneda] + ')' : '');
+    $('#cm-lbl-entra').textContent = 'Monto que entra' + (d ? ' (' + MON[d.moneda] + ')' : '');
+  }
+
+  function renderCuentas() {
+    var c = $('#cuentas');
+    if (tab !== 'cuentas' || !loaded) { c.hidden = true; return; }
+    c.hidden = false;
+    llenarSelects();
+    var tr = tasaRef();
+    var filas = cuentas.map(function (cu) {
+      var v = saldoDe(cu);
+      return { cu: cu, v: v, u: cu.moneda === 'BS' ? (tr ? v / tr.v : null) : v };
+    });
+    var sinTr = filas.some(function (x) { return x.u == null; });
+    $('#cu-band').innerHTML = bandHtml([
+      ['Total en dólares', usd(sum(filas, function (x) { return x.u; })), sinTr ? 'falta la tasa para contar los Bs' : (tr ? 'Bs a ' + bs(tr.v) + (tr.aprox ? ' (aprox.)' : '') : '')],
+      ['En bolívares', bs(sum(filas.filter(function (x) { return x.cu.moneda === 'BS'; }), function (x) { return x.v; })) + ' Bs'],
+      ['En dólares y USDT', usd(sum(filas.filter(function (x) { return x.cu.moneda !== 'BS'; }), function (x) { return x.v; }))]
+    ]);
+
+    $('#cu-cuentas').innerHTML = !filas.length ? '<div class="tablebox"><div class="vacio">Aún no hay cuentas. Agrega la primera abajo.</div></div>' :
+      '<div class="tablebox"><table><thead><tr><th>Cuenta</th><th class="r">Saldo</th><th class="r">En dólares</th><th class="r">Cambiar saldo inicial</th><th></th></tr></thead><tbody>' +
+      filas.map(function (x) {
+        return '<tr><td class="det">' + esc(x.cu.nombre) + '<span class="hora">' + MON[x.cu.moneda] + '</span></td>' +
+          '<td class="r' + (x.v < 0 ? ' neg' : '') + '">' + dinero(x.cu.moneda, x.v) + '</td>' +
+          '<td class="r">' + (x.u == null ? '—' : usd(x.u)) + '</td>' +
+          '<td class="r">' + pendForm(x.cu.id, 'saldo_inicial', 'Saldo', 'cuentas') + '</td>' + delCell(x.cu.id, 'cuentas') + '</tr>';
+      }).join('') + '</tbody></table></div>';
+
+    // Movimientos: cada traspaso (dos patas) se muestra como una sola fila
+    var porTid = {}, items = [];
+    cmovs.slice().sort(function (a, b) { return ordenKey(b) < ordenKey(a) ? -1 : 1; }).forEach(function (m) {
+      if (!m.traspaso_id) { items.push({ m: m }); return; }
+      if (!porTid[m.traspaso_id]) { porTid[m.traspaso_id] = { m: m, tid: m.traspaso_id }; items.push(porTid[m.traspaso_id]); }
+      porTid[m.traspaso_id][m.tipo === 'egreso' ? 'sale' : 'entra'] = m;
+    });
+    $('#cu-lista').innerHTML = !items.length ? '<div class="tablebox"><div class="vacio"><strong>Aún no hay movimientos</strong>Agrega el primero arriba.</div></div>' :
+      '<div class="tablebox"><table><thead><tr><th>Fecha</th><th>Cuenta</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>' +
+      items.map(function (it) {
+        var m = it.m, fecha = '<td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>';
+        if (it.tid) {
+          var a = it.sale && cuentaDe(it.sale.cuenta_id), b = it.entra && cuentaDe(it.entra.cuenta_id);
+          return '<tr>' + fecha + '<td class="det">' + esc(a ? a.nombre : '?') + ' → ' + esc(b ? b.nombre : '?') + '</td><td class="det">' + esc(m.detalle || 'Traspaso') + '</td>' +
+            '<td class="r">' + (a ? dinero(a.moneda, it.sale.monto) : '') + ' → ' + (b ? dinero(b.moneda, it.entra.monto) : '') + '</td>' + delCell(it.tid, 'traspasos') + '</tr>';
+        }
+        var cu = cuentaDe(m.cuenta_id), ing = m.tipo === 'ingreso';
+        return '<tr>' + fecha + '<td class="det">' + esc(cu ? cu.nombre : '?') + '</td><td class="det">' + esc(m.detalle || (ing ? 'Ingreso' : 'Egreso')) + '</td>' +
+          '<td class="r' + (ing ? '' : ' neg') + '">' + (ing ? '+' : '−') + (cu ? dinero(cu.moneda, m.monto) : bs(m.monto)) + '</td>' + delCell(m.id, 'cmovs') + '</tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
   function render() {
     var ae = document.activeElement;
-    if (ae && ae.tagName === 'INPUT' && $('#lista').contains(ae)) { dirty = true; return; }
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT') && ($('#lista').contains(ae) || $('#cuentas').contains(ae))) { dirty = true; return; }
     dirty = false;
-    renderTasa(); renderBands(); renderAviso(); renderLista(); renderComercios(); renderResumen();
+    renderTasa(); renderBands(); renderAviso(); renderLista(); renderComercios(); renderResumen(); renderCuentas();
   }
 
   function setTab(t) {
     tab = t; pendingDel = null;
-    ['gasto', 'venta', 'compra', 'resumen'].forEach(function (k) {
+    ['gasto', 'venta', 'compra', 'cuentas', 'resumen'].forEach(function (k) {
       $('#tab-' + k).setAttribute('aria-selected', k === t ? 'true' : 'false');
       var f = $('#f-' + k); if (f) f.hidden = !(k === t) || !canWrite;
     });
@@ -454,7 +565,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   async function guardar(fn, okMsg) {
     try { var r = await fn(); if (r && r.error) throw r.error; if (okMsg) toast(okMsg); await cargar(); return true; }
     catch (e) {
-      toast(e && e.code === '42501' ? 'No tienes permiso para guardar.' : 'No se pudo guardar. Intenta de nuevo.');
+      toast(e && e.code === '42501' ? 'No tienes permiso para guardar.' : (e && e.code === '23503' ? 'Esa cuenta tiene movimientos, no se puede borrar.' : 'No se pudo guardar. Intenta de nuevo.'));
       return false;
     }
   }
@@ -466,10 +577,10 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     if (t.dataset.act === 'registro') { await registrar(); return; }
     if (!db) return;
     if (t.dataset.act === 'del') {
-      var id = t.dataset.id;
+      var id = t.dataset.id, colDel = t.dataset.col || 'movs';
       if (pendingDel !== id) { pendingDel = id; render(); clearTimeout(setTab.h); setTab.h = setTimeout(function () { pendingDel = null; render(); }, 3000); return; }
       pendingDel = null;
-      await guardar(function () { return db.doc('movs/' + id).delete(); }, 'Borrado');
+      await guardar(function () { return db.doc(colDel + '/' + id).delete(); }, 'Borrado');
     }
     if (t.dataset.act === 'aplicar' && tasa) {
       t.disabled = true;
@@ -484,6 +595,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   document.addEventListener('change', function (e) {
     if (e.target.id === 'mes-sel') { mesSel = e.target.value; renderResumen(true); }
+    if (e.target.id === 'cm-tipo' || e.target.id === 'cm-cuenta' || e.target.id === 'cm-destino') ajustarFormMov();
   });
 
   document.addEventListener('focusout', function () { setTimeout(function () { if (dirty) render(); }, 0); });
@@ -501,10 +613,40 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       return;
     }
     if (f.dataset.act === 'fix') {
-      var val = num(f.querySelector('input').value);
-      if (!val) { toast('Escribe un número mayor que cero'); return; }
+      var val = num(f.querySelector('input').value, f.dataset.field === 'saldo_inicial');
+      if (val == null) { toast('Escribe un número válido'); return; }
       var patch = {}; patch[f.dataset.field] = val;
-      await guardar(function () { return db.doc('movs/' + f.dataset.id).update(patch); }, 'Guardado');
+      await guardar(function () { return db.doc((f.dataset.col || 'movs') + '/' + f.dataset.id).update(patch); }, 'Guardado');
+      return;
+    }
+    if (f.id === 'f-cuenta') {
+      var fc = new FormData(f), nom = String(fc.get('nombre') || '').trim();
+      if (!nom) { toast('Escribe el nombre de la cuenta'); return; }
+      var sal = String(fc.get('saldo') || '').trim() ? num(fc.get('saldo'), true) : 0;
+      if (sal == null) { toast('El saldo no es un número válido'); return; }
+      var okc = await guardar(function () { return db.collection('cuentas').add({ nombre: nom, moneda: fc.get('moneda'), saldo_inicial: sal, orden: cuentas.length + 1 }); }, 'Cuenta agregada');
+      if (okc) f.reset();
+      return;
+    }
+    if (f.id === 'f-cmov') {
+      var fm = new FormData(f), tp = fm.get('tipo'), cuId = fm.get('cuenta'), fe = fm.get('fecha'), mo = num(fm.get('monto'));
+      if (!fe || !cuentaDe(cuId)) { toast('Falta la fecha o la cuenta'); return; }
+      if (!mo) { toast('Escribe el monto'); return; }
+      var base = { fecha: fe, detalle: String(fm.get('detalle') || '').trim() };
+      if (fe === ymd(new Date())) base.ts = new Date().toISOString();
+      var filasMov;
+      if (tp === 'traspaso') {
+        var dId = fm.get('destino'), dc = cuentaDe(dId), oc = cuentaDe(cuId);
+        if (!dc || dId === cuId) { toast('Elige dos cuentas distintas'); return; }
+        var ent = oc.moneda === dc.moneda ? mo : num(fm.get('entra'));
+        if (!ent) { toast('Escribe el monto que entra'); return; }
+        var tid = crypto.randomUUID();
+        filasMov = [Object.assign({}, base, { cuenta_id: cuId, tipo: 'egreso', monto: mo, traspaso_id: tid }), Object.assign({}, base, { cuenta_id: dId, tipo: 'ingreso', monto: ent, traspaso_id: tid })];
+      } else {
+        filasMov = [Object.assign({}, base, { cuenta_id: cuId, tipo: tp, monto: mo })];
+      }
+      var okm = await guardar(function () { return db.collection('cmovs').add(filasMov); }, 'Agregado');
+      if (okm) { f.elements['monto'].value = ''; f.elements['entra'].value = ''; f.elements['detalle'].value = ''; }
       return;
     }
     if (f.classList.contains('add')) {
@@ -528,6 +670,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   function initForms() {
     ['gasto', 'venta', 'compra'].forEach(function (k) { $('#f-' + k).fecha.value = ymd(new Date()); });
+    $('#f-cmov').elements['fecha'].value = ymd(new Date());
   }
 
   // ---- Acceso y datos (Supabase) ----
@@ -536,18 +679,22 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   var canalListo = false;
 
+  var TABLAS = { movs: 'binance_movs', cuentas: 'binance_cuentas', cmovs: 'binance_cmovs' };
+
   // Misma forma que usa el resto de la página: db.doc(...).update/delete/set y db.collection(...).add
   function makeDb() {
     return {
       doc: function (path) {
         var p = path.split('/'), col = p[0], id = p[1];
         if (col === 'ajustes') return { set: function (v) { return sb.from('binance_ajustes').upsert({ clave: id, valor: v.valor, fecha: v.fecha }); } };
+        if (col === 'traspasos') return { delete: function () { return sb.from('binance_cmovs').delete().eq('traspaso_id', id); } };
+        var tabla = TABLAS[col];
         return {
-          update: function (patch) { return sb.from('binance_movs').update(patch).eq('id', id); },
-          delete: function () { return sb.from('binance_movs').delete().eq('id', id); }
+          update: function (patch) { return sb.from(tabla).update(patch).eq('id', id); },
+          delete: function () { return sb.from(tabla).delete().eq('id', id); }
         };
       },
-      collection: function () { return { add: function (doc) { return sb.from('binance_movs').insert(doc); } }; }
+      collection: function (col) { return { add: function (doc) { return sb.from(TABLAS[col]).insert(doc); } }; }
     };
   }
 
@@ -562,6 +709,16 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     if (r.error) { $('#estado').hidden = false; $('#estado').textContent = 'No se pudieron cargar los datos. Recarga la página.'; return; }
     movs = r.data.map(function (d) { d.id = String(d.id); return d; });
     armarP2p();
+    var cu = await sb.from('binance_cuentas').select('*').order('orden', { ascending: true });
+    if (!cu.error) cuentas = cu.data;
+    var todos = [], desde = 0;
+    for (;;) {
+      var pg = await sb.from('binance_cmovs').select('*').order('creado', { ascending: false }).range(desde, desde + 999);
+      if (pg.error) break;
+      todos = todos.concat(pg.data);
+      if (pg.data.length < 1000) { cmovs = todos; break; }
+      desde += 1000;
+    }
     var t = await sb.from('binance_ajustes').select('*').eq('clave', 'tasa').maybeSingle();
     tasa = t.data ? { valor: Number(t.data.valor), fecha: t.data.fecha } : null;
     loaded = true; $('#estado').hidden = true; render();
@@ -590,6 +747,8 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       sb.channel('binance')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_movs' }, cargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_ajustes' }, cargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_cuentas' }, cargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_cmovs' }, cargar)
         .subscribe();
     }
   }
