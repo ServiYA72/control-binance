@@ -229,6 +229,7 @@ form.add select { width: 100%; }
       <form class="add" id="f-cuenta" autocomplete="off">
         <label class="ancho">Nombre<input type="text" name="nombre" required placeholder="Ej: Banesco"></label>
         <label>Moneda<select name="moneda"><option value="BS">Bolívares</option><option value="USD">Dólares</option><option value="USDT">USDT</option></select></label>
+        <label>Últimos 4 dígitos<input type="text" name="terminacion" inputmode="numeric" maxlength="4" placeholder="Ej: 0451"></label>
         <label>Saldo hoy<input class="num" name="saldo" inputmode="decimal" placeholder="0,00"></label>
         <button class="main" type="submit">Agregar cuenta</button>
       </form>
@@ -278,6 +279,16 @@ form.add select { width: 100%; }
     var r = { bcv_usd: null, bcv_eur: null, binance: null };
     tasasH.forEach(function (x) { Object.keys(r).forEach(function (k) { if (r[k] == null && x[k] != null) r[k] = x[k]; }); });
     return r;
+  }
+  // Dólar BCV guardado más cerca de esa hora (el BCV cambia una vez al día: hasta 24 h de diferencia)
+  function bcvHora(ts) {
+    var t = new Date(ts).getTime(), best = null, dist = Infinity;
+    for (var i = 0; i < tasasH.length; i++) {
+      if (tasasH[i].bcv_usd == null) continue;
+      var dd = Math.abs(tasasH[i].t - t);
+      if (dd < dist) { dist = dd; best = tasasH[i].bcv_usd; }
+    }
+    return dist <= 24 * 3600 * 1000 ? best : null;
   }
   // Tasa Binance guardada más cerca de la hora del pago (máximo 90 minutos de diferencia)
   function tasaHora(m) {
@@ -556,7 +567,7 @@ form.add select { width: 100%; }
     $('#cu-cuentas').innerHTML = !filas.length ? '<div class="tablebox"><div class="vacio">Aún no hay cuentas. Agrega la primera abajo.</div></div>' :
       '<div class="tablebox"><table><thead><tr><th>Cuenta</th><th class="r">Saldo</th><th class="r">En dólares</th><th class="r">Cambiar saldo inicial</th><th></th></tr></thead><tbody>' +
       filas.map(function (x) {
-        return '<tr><td class="det">' + esc(x.cu.nombre) + '<span class="hora">' + MON[x.cu.moneda] + '</span></td>' +
+        return '<tr><td class="det">' + esc(x.cu.nombre) + '<span class="hora">' + MON[x.cu.moneda] + (x.cu.terminacion ? ' · ****' + esc(x.cu.terminacion) : '') + '</span></td>' +
           '<td class="r' + (x.v < 0 ? ' neg' : '') + '">' + dinero(x.cu.moneda, x.v) + '</td>' +
           '<td class="r">' + (x.u == null ? '—' : usd(x.u)) + '</td>' +
           '<td class="r">' + pendForm(x.cu.id, 'saldo_inicial', 'Saldo', 'cuentas') + '</td>' + delCell(x.cu.id, 'cuentas') + '</tr>';
@@ -580,7 +591,8 @@ form.add select { width: 100%; }
         }
         var cu = cuentaDe(m.cuenta_id), ing = m.tipo === 'ingreso';
         return '<tr>' + fecha + '<td class="det">' + esc(cu ? cu.nombre : '?') + '</td><td class="det">' + esc(m.detalle || (ing ? 'Ingreso' : 'Egreso')) + '</td>' +
-          '<td class="r' + (ing ? '' : ' neg') + '">' + (ing ? '+' : '−') + (cu ? dinero(cu.moneda, m.monto) : bs(m.monto)) + '</td>' + delCell(m.id, 'cmovs') + '</tr>';
+          '<td class="r' + (ing ? '' : ' neg') + '">' + (ing ? '+' : '−') + (cu ? dinero(cu.moneda, m.monto) : bs(m.monto)) +
+          (cu && cu.moneda === 'BS' && m.tasa_bcv ? '<span class="hora">≈ ' + usd(m.monto / m.tasa_bcv) + ' · BCV ' + bs(Number(m.tasa_bcv)) + '</span>' : '') + '</td>' + delCell(m.id, 'cmovs') + '</tr>';
       }).join('') + '</tbody></table></div>';
   }
 
@@ -685,7 +697,7 @@ form.add select { width: 100%; }
       if (!nom) { toast('Escribe el nombre de la cuenta'); return; }
       var sal = String(fc.get('saldo') || '').trim() ? num(fc.get('saldo'), true) : 0;
       if (sal == null) { toast('El saldo no es un número válido'); return; }
-      var okc = await guardar(function () { return db.collection('cuentas').add({ nombre: nom, moneda: fc.get('moneda'), saldo_inicial: sal, orden: cuentas.length + 1 }); }, 'Cuenta agregada');
+      var okc = await guardar(function () { return db.collection('cuentas').add({ nombre: nom, moneda: fc.get('moneda'), saldo_inicial: sal, terminacion: String(fc.get('terminacion') || '').trim() || null, orden: cuentas.length + 1 }); }, 'Cuenta agregada');
       if (okc) f.reset();
       return;
     }
@@ -706,6 +718,8 @@ form.add select { width: 100%; }
       } else {
         filasMov = [Object.assign({}, base, { cuenta_id: cuId, tipo: tp, monto: mo })];
       }
+      var bcvAhora = bcvHora(base.ts || (fe + 'T12:00:00'));
+      filasMov.forEach(function (r) { var cu = cuentaDe(r.cuenta_id); if (cu && cu.moneda === 'BS' && bcvAhora) r.tasa_bcv = bcvAhora; });
       var okm = await guardar(function () { return db.collection('cmovs').add(filasMov); }, 'Agregado');
       if (okm) { f.elements['monto'].value = ''; f.elements['entra'].value = ''; f.elements['detalle'].value = ''; }
       return;
