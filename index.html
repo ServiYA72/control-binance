@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Control Binance USDT</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Libro de cuentas: columnas de cifras en mono, texto en sans, verde bolívar como único acento, ámbar solo para lo pendiente */
+:root {
+  --bg: #F1F4F2;
+  --surface: #FFFFFF;
+  --ink: #13211B;
+  --ink-2: #4F5F57;
+  --line: #D5DDD8;
+  --accent: #0B6B4F;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #DCEFE6;
+  --warn: #8A5A00;
+  --warn-soft: #FBEFD3;
+  --bad: #A8322A;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1612; --surface: #15211B; --ink: #E5EEE9; --ink-2: #9DB0A6; --line: #2A3A32;
+    --accent: #4FC79A; --accent-ink: #07130E; --accent-soft: #173A2B;
+    --warn: #F0BE5C; --warn-soft: #3A2D0F; --bad: #F08A80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1612; --surface: #15211B; --ink: #E5EEE9; --ink-2: #9DB0A6; --line: #2A3A32;
+  --accent: #4FC79A; --accent-ink: #07130E; --accent-soft: #173A2B;
+  --warn: #F0BE5C; --warn-soft: #3A2D0F; --bad: #F08A80;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; padding-block: 20px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 13px; font-weight: 500; margin: 0 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.top { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-end; }
+.top p { margin: 2px 0 0; color: var(--ink-2); font-size: 14px; }
+.tasa { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tasa label { font-size: 12px; color: var(--ink-2); }
+.tasa .row { display: flex; gap: 8px; }
+.tasa small { font-size: 12px; color: var(--ink-2); }
+.tasa small.vieja { color: var(--warn); }
+input, button { font: inherit; color: inherit; }
+input { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; width: 100%; }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tasa input { width: 130px; font-family: var(--mono); }
+button { cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; font-weight: 500; }
+button:hover { border-color: var(--accent); }
+button.main { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.link { border: 0; background: none; padding: 4px 6px; color: var(--ink-2); font-weight: 400; }
+button.link:hover { color: var(--bad); }
+button.link.sure { color: var(--bad); font-weight: 600; }
+.band { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
+.band > div { padding: 14px 16px; border-right: 1px solid var(--line); }
+.band > div:last-child { border-right: 0; }
+.band .lbl { font-size: 12px; color: var(--ink-2); }
+.band .val { font-family: var(--mono); font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.band .sub { font-size: 12px; color: var(--ink-2); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 16px; color: var(--ink-2); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.aviso { background: var(--warn-soft); color: var(--warn); border-radius: 6px; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; font-size: 14px; }
+.aviso button { color: var(--ink); }
+form.add { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); align-items: end; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+form.add label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); min-width: 0; }
+form.add label.ancho { grid-column: span 2; }
+@media (max-width: 480px) { form.add label.ancho { grid-column: span 1; } }
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+th { text-align: left; font-weight: 500; font-size: 12px; color: var(--ink-2); padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+th.r, td.r { text-align: right; }
+td.r { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.fecha { white-space: nowrap; color: var(--ink-2); }
+td .hora { display: block; font-size: 12px; font-family: var(--mono); }
+td.det { max-width: 260px; overflow-wrap: anywhere; }
+.pend { display: inline-flex; gap: 4px; }
+.pend input { width: 96px; padding: 4px 8px; font-family: var(--mono); font-size: 13px; }
+.pend button { padding: 4px 10px; font-size: 13px; background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.aprox { font-family: var(--sans); font-size: 11px; color: var(--warn); margin-left: 4px; }
+.tcell .pend { margin-top: 4px; }
+select { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mes-bar { display: flex; gap: 10px; align-items: center; }
+.mes-bar label { font-size: 13px; color: var(--ink-2); }
+#resumen { display: flex; flex-direction: column; gap: 20px; }
+#login { max-width: 360px; margin: 12vh auto 0; display: flex; flex-direction: column; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 22px; }
+#login h1 { font-size: 20px; }
+#login label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); }
+#login .fila { display: flex; gap: 8px; flex-wrap: wrap; }
+#login .fila button { flex: 1; }
+#login p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.quien { font-size: 12px; color: var(--ink-2); }
+.vacio { padding: 28px 16px; text-align: center; color: var(--ink-2); }
+.vacio strong { display: block; color: var(--ink); margin-bottom: 4px; font-weight: 600; }
+.comercios { display: flex; flex-direction: column; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.com { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; font-size: 14px; }
+.com .nombre { overflow-wrap: anywhere; }
+.com .barra { grid-column: 1 / -1; height: 4px; background: var(--accent-soft); border-radius: 2px; }
+.com .barra i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.estado { color: var(--ink-2); font-size: 14px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 6px; font-size: 14px; max-width: calc(100vw - 32px); }
+.toast[hidden] { display: none; }
+@media (prefers-reduced-motion: no-preference) { button { transition: border-color .15s, color .15s; } }
+</style>
+
+<form id="login" hidden autocomplete="on">
+  <h1>Control Binance USDT</h1>
+  <p id="login-msg">Entra con tu correo y tu clave.</p>
+  <label>Correo<input id="login-email" type="email" autocomplete="username" required></label>
+  <label>Clave<input id="login-pass" type="password" autocomplete="current-password" minlength="6" required></label>
+  <div class="fila">
+    <button class="main" type="submit">Entrar</button>
+    <button type="button" data-act="registro">Crear mi clave</button>
+  </div>
+  <p>La primera vez, escribe tu correo, inventa una clave y toca "Crear mi clave".</p>
+</form>
+
+<div class="wrap" id="app" hidden>
+  <header class="top">
+    <div>
+      <h1>Control Binance USDT</h1>
+      <p>Tarjeta Mastercard y compra/venta de USDT</p>
+      <p class="quien"><span id="quien"></span> <button type="button" class="link" data-act="salir">Salir</button></p>
+    </div>
+    <form class="tasa" id="f-tasa" autocomplete="off">
+      <label for="tasa-in">Tasa del día (Bs por USDT, Binance P2P)</label>
+      <div class="row">
+        <input id="tasa-in" class="num" inputmode="decimal" placeholder="Ej: 650,00" aria-describedby="tasa-nota">
+        <button class="main" type="submit">Guardar</button>
+      </div>
+      <small id="tasa-nota">Sin definir</small>
+    </form>
+  </header>
+
+  <section aria-label="Gastos en dólares">
+    <div class="band" id="band-gastos"></div>
+  </section>
+
+  <div class="tabs" role="tablist" aria-label="Secciones">
+    <button role="tab" id="tab-gasto" aria-selected="true" data-tab="gasto">Gastos tarjeta</button>
+    <button role="tab" id="tab-venta" aria-selected="false" data-tab="venta">Ventas USDT</button>
+    <button role="tab" id="tab-compra" aria-selected="false" data-tab="compra">Compras USDT</button>
+    <button role="tab" id="tab-resumen" aria-selected="false" data-tab="resumen">Resumen</button>
+  </div>
+
+  <div id="estado" class="estado">Cargando datos…</div>
+  <div id="aviso" class="aviso" hidden></div>
+  <div class="band" id="band-sec" hidden></div>
+
+  <form class="add" id="f-gasto" data-tipo="gasto" autocomplete="off">
+    <label>Fecha<input type="date" name="fecha" required></label>
+    <label class="ancho">Comercio<input type="text" name="detalle" required placeholder="Ej: Farmacia Central"></label>
+    <label>Bolívares<input class="num" name="bs" inputmode="decimal" required placeholder="0,00"></label>
+    <label>Tasa (opcional)<input class="num" name="tasa" inputmode="decimal" placeholder="Tasa del día"></label>
+    <button class="main" type="submit">Agregar pago</button>
+  </form>
+  <form class="add" id="f-venta" data-tipo="venta" autocomplete="off" hidden>
+    <label>Fecha<input type="date" name="fecha" required></label>
+    <label>USDT vendidos<input class="num" name="usdt" inputmode="decimal" required placeholder="0,00"></label>
+    <label>Bolívares recibidos<input class="num" name="bs" inputmode="decimal" placeholder="0,00"></label>
+    <label class="ancho">Nota (opcional)<input type="text" name="detalle" placeholder="Ej: orden P2P 7680"></label>
+    <button class="main" type="submit">Agregar venta</button>
+  </form>
+  <form class="add" id="f-compra" data-tipo="compra" autocomplete="off" hidden>
+    <label>Fecha<input type="date" name="fecha" required></label>
+    <label>USDT comprados<input class="num" name="usdt" inputmode="decimal" required placeholder="0,00"></label>
+    <label>Bolívares pagados<input class="num" name="bs" inputmode="decimal" placeholder="0,00"></label>
+    <label class="ancho">Nota (opcional)<input type="text" name="detalle" placeholder="Ej: orden P2P 4496"></label>
+    <button class="main" type="submit">Agregar compra</button>
+  </form>
+
+  <div id="lista"></div>
+  <div id="resumen" hidden></div>
+  <div id="comercios" hidden></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var db = null, canWrite = true;
+  var movs = [], p2p = [], mesSel = null, tasa = null, tab = 'gasto', pendingDel = null, dirty = false, loaded = false;
+
+  var nf = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  var bs = function (n) { return n == null ? '—' : nf.format(n); };
+  var usd = function (n) { return n == null ? '—' : '$' + nf.format(n); };
+  var pad = function (n) { return String(n).padStart(2, '0'); };
+  var ymd = function (d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  var parseDay = function (s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var num = function (s) {
+    s = String(s == null ? '' : s).trim().replace(/\s/g, '');
+    if (!s) return null;
+    if (s.indexOf(',') > -1) s = s.replace(/\./g, '').replace(',', '.');
+    var n = parseFloat(s);
+    return isFinite(n) && n > 0 ? n : null;
+  };
+  var fechaTxt = function (f) {
+    var d = parseDay(f), y = d.getFullYear() !== new Date().getFullYear();
+    return d.toLocaleDateString('es-VE', y ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
+  };
+  var horaTxt = function (ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    return isNaN(d) ? '' : d.toLocaleTimeString('es-VE', { hour: 'numeric', minute: '2-digit' });
+  };
+  var toast = function (msg) {
+    var t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast.h); toast.h = setTimeout(function () { t.hidden = true; }, 3500);
+  };
+
+  function ordenKey(m) { return m.ts || (m.fecha + 'T12:00:00'); }
+  // Tasa aproximada: la de la compra/venta P2P más cercana en el tiempo
+  function tasaAprox(m) {
+    if (!p2p.length) return null;
+    var t = new Date(ordenKey(m)).getTime(), best = null, dist = Infinity;
+    for (var i = 0; i < p2p.length; i++) {
+      var dd = Math.abs(p2p[i].t - t);
+      if (dd < dist) { dist = dd; best = p2p[i].tasa; }
+    }
+    return best;
+  }
+  function derive(m) {
+    if (m.tipo === 'gasto') {
+      var t = m.tasa || null, aprox = false;
+      if (!t && m.usd == null) { t = tasaAprox(m); aprox = !!t; }
+      return { usdt: m.usd != null ? m.usd : (m.bs && t ? m.bs / t : null), bs: m.bs || null, tasa: t, aprox: aprox };
+    }
+    return { usdt: m.usdt, bs: m.bs || null, tasa: m.bs && m.usdt ? m.bs / m.usdt : null };
+  }
+  function sinTasa(m) { return m.usd == null && derive(m).tasa == null; }
+  function ofTipo(t) {
+    return movs.filter(function (m) { return m.tipo === t; }).sort(function (a, b) { return ordenKey(b) < ordenKey(a) ? -1 : 1; });
+  }
+  function sum(arr, f) { return arr.reduce(function (a, m) { var v = f(m); return a + (v || 0); }, 0); }
+
+  // Tasa promedio ponderada (Bs / USDT) de las órdenes que tienen ambos datos
+  function promTasa(rows) {
+    var ca = rows.filter(function (m) { return m.usdt && m.bs; });
+    return ca.length ? sum(ca, function (m) { return m.bs; }) / sum(ca, function (m) { return m.usdt; }) : null;
+  }
+
+  function weekStart() {
+    var d = new Date(); d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return ymd(d);
+  }
+
+  function renderTasa() {
+    var n = $('#tasa-nota');
+    if (!tasa) { n.textContent = 'Sin definir'; n.className = ''; return; }
+    var hoy = tasa.fecha === ymd(new Date());
+    n.textContent = hoy ? 'Guardada hoy: ' + bs(tasa.valor) : 'Guardada el ' + fechaTxt(tasa.fecha) + ': ' + bs(tasa.valor) + ' (actualízala)';
+    n.className = hoy ? '' : 'vieja';
+    if (document.activeElement !== $('#tasa-in') && !$('#tasa-in').value) $('#tasa-in').value = String(tasa.valor).replace('.', ',');
+  }
+
+  function bandHtml(items) {
+    return items.map(function (i) {
+      return '<div><div class="lbl">' + esc(i[0]) + '</div><div class="val">' + esc(i[1]) + '</div>' + (i[2] ? '<div class="sub">' + esc(i[2]) + '</div>' : '') + '</div>';
+    }).join('');
+  }
+
+  function renderBands() {
+    var g = ofTipo('gasto'), hoy = ymd(new Date()), sem = weekStart(), mes = hoy.slice(0, 7);
+    var u = function (m) { return derive(m).usdt; };
+    var sinTasa = g.filter(function (m) { return derive(m).usdt == null; }).length;
+    var nota = sinTasa ? 'sin contar ' + sinTasa + (sinTasa === 1 ? ' pago sin tasa' : ' pagos sin tasa') : '';
+    $('#band-gastos').innerHTML = bandHtml([
+      ['Gastado hoy', usd(sum(g.filter(function (m) { return m.fecha === hoy; }), u))],
+      ['Esta semana', usd(sum(g.filter(function (m) { return m.fecha >= sem; }), u)), nota],
+      ['Este mes', usd(sum(g.filter(function (m) { return m.fecha.slice(0, 7) === mes; }), u)), nota]
+    ]);
+
+    var sb = $('#band-sec');
+    if (tab === 'gasto' || tab === 'resumen') { sb.hidden = true; return; }
+    var rows = ofTipo(tab), mesRows = rows.filter(function (m) { return m.fecha.slice(0, 7) === mes; });
+    var prom = promTasa(rows);
+    var verbo = tab === 'venta' ? 'vendidos' : 'comprados';
+    sb.hidden = false;
+    sb.innerHTML = bandHtml([
+      ['USDT ' + verbo + ' este mes', nf.format(sum(mesRows, function (m) { return m.usdt; }))],
+      [tab === 'venta' ? 'Bs recibidos en total' : 'Bs pagados en total', bs(sum(rows, function (m) { return m.bs; })), rows.filter(function (m) { return !m.bs; }).length ? 'faltan Bs en ' + rows.filter(function (m) { return !m.bs; }).length + ' órdenes' : ''],
+      ['Tasa promedio', prom ? bs(prom) : '—', 'Bs por USDT']
+    ]);
+  }
+
+  function renderAviso() {
+    var a = $('#aviso'), g = ofTipo('gasto').filter(sinTasa);
+    if (tab !== 'gasto' || !g.length) { a.hidden = true; return; }
+    a.hidden = false;
+    a.innerHTML = '<span>' + g.length + (g.length === 1 ? ' pago no tiene tasa.' : ' pagos no tienen tasa.') + ' Sin tasa no se calculan los dólares.</span>' +
+      (tasa && canWrite ? '<button type="button" data-act="aplicar">Aplicar tasa guardada (' + esc(bs(tasa.valor)) + ')</button>' : '<span>Guarda la tasa del día arriba.</span>');
+  }
+
+  function pendForm(id, field, ph) {
+    return '<form class="pend" data-act="fix" data-id="' + esc(id) + '" data-field="' + field + '"><input class="num" inputmode="decimal" placeholder="' + ph + '" aria-label="' + ph + '"><button type="submit">Poner</button></form>';
+  }
+
+  // Tabla de movimientos; edit=false la deja de solo lectura (para el resumen)
+  function tablaHtml(t, rows, edit) {
+    var head, body, fin = edit ? '<th></th>' : '', cel = function (m) { return edit ? delCell(m.id) : ''; };
+    if (t === 'gasto') {
+      head = '<th>Fecha</th><th>Comercio</th><th class="r">Bolívares</th><th class="r">Tasa</th><th class="r">Dólares</th>' + fin;
+      body = rows.map(function (m) {
+        var d = derive(m);
+        return '<tr><td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>' +
+          '<td class="det">' + esc(m.detalle) + '</td>' +
+          '<td class="r">' + bs(d.bs) + '</td>' +
+          '<td class="r tcell">' + (d.aprox
+            ? bs(d.tasa) + '<span class="aprox" title="Tasa de tu compra o venta P2P más cercana a esa hora">aprox.</span>' + (edit && canWrite ? pendForm(m.id, 'tasa', 'Cambiar') : '')
+            : (d.tasa ? bs(d.tasa) : (edit && canWrite && m.usd == null ? pendForm(m.id, 'tasa', 'Tasa') : '—'))) + '</td>' +
+          '<td class="r">' + usd(d.usdt) + '</td>' + cel(m) + '</tr>';
+      }).join('');
+    } else {
+      head = '<th>Fecha</th><th>Nota</th><th class="r">USDT</th><th class="r">Bolívares</th><th class="r">Tasa</th>' + fin;
+      body = rows.map(function (m) {
+        var d = derive(m);
+        return '<tr><td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>' +
+          '<td class="det">' + esc(m.detalle || '') + '</td>' +
+          '<td class="r">' + nf.format(m.usdt) + '</td>' +
+          '<td class="r">' + (d.bs ? bs(d.bs) : (edit && canWrite ? pendForm(m.id, 'bs', 'Bs') : '—')) + '</td>' +
+          '<td class="r">' + (d.tasa ? bs(d.tasa) : '—') + '</td>' + cel(m) + '</tr>';
+      }).join('');
+    }
+    return '<div class="tablebox"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderLista() {
+    var rows = ofTipo(tab), box = $('#lista');
+    if (!loaded || tab === 'resumen') { box.innerHTML = ''; return; }
+    if (!rows.length) {
+      var txt = { gasto: ['Aún no hay pagos', 'Agrega el primero arriba, o pídele a Claude que cargue los pagos nuevos desde tu Gmail.'], venta: ['Aún no hay ventas de USDT', 'Agrega la primera arriba, o pídele a Claude que cargue las órdenes P2P desde tu Gmail.'], compra: ['Aún no hay compras de USDT', 'Agrega la primera arriba, o pídele a Claude que cargue las órdenes P2P desde tu Gmail.'] }[tab];
+      box.innerHTML = '<div class="tablebox"><div class="vacio"><strong>' + txt[0] + '</strong>' + txt[1] + '</div></div>';
+      return;
+    }
+    box.innerHTML = tablaHtml(tab, rows, true);
+  }
+  function delCell(id) {
+    if (!canWrite) return '<td></td>';
+    var sure = pendingDel === id;
+    return '<td class="r"><button type="button" class="link' + (sure ? ' sure' : '') + '" data-act="del" data-id="' + esc(id) + '">' + (sure ? '¿Borrar?' : 'Borrar') + '</button></td>';
+  }
+
+  // Gasto en dólares por comercio, de mayor a menor: [nombre, dólares, cantidad de pagos]
+  function comerciosDe(rows) {
+    var map = {};
+    rows.forEach(function (m) {
+      var u = derive(m).usdt; if (u == null) return;
+      var k = (m.detalle || 'Sin nombre').trim().toUpperCase();
+      if (!map[k]) map[k] = [k, 0, 0];
+      map[k][1] += u; map[k][2] += 1;
+    });
+    return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return b[1] - a[1]; });
+  }
+  function barrasHtml(list) {
+    var max = list[0][1];
+    return '<div class="comercios">' + list.map(function (r) {
+      return '<div class="com"><span class="nombre">' + esc(r[0]) + (r[2] > 1 ? ' · ' + r[2] + ' pagos' : '') + '</span><span class="num">' + usd(r[1]) + '</span><span class="barra"><i style="width:' + Math.max(3, Math.round(r[1] / max * 100)) + '%"></i></span></div>';
+    }).join('') + '</div>';
+  }
+
+  function renderComercios() {
+    var c = $('#comercios');
+    if (tab !== 'gasto' || !loaded) { c.hidden = true; return; }
+    var list = comerciosDe(ofTipo('gasto')).slice(0, 6);
+    if (!list.length) { c.hidden = true; return; }
+    c.hidden = false;
+    c.innerHTML = '<h2>Dónde más se gasta (en dólares)</h2>' + barrasHtml(list);
+  }
+
+  // Resumen de un mes completo: gastos, comercios, ventas y compras de USDT
+  function mesTxt(k) {
+    var p = k.split('-'), t = new Date(+p[0], +p[1] - 1, 1).toLocaleDateString('es-VE', { month: 'long', year: 'numeric' });
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  function renderResumen(force) {
+    var c = $('#resumen');
+    if (tab !== 'resumen' || !loaded) { c.hidden = true; return; }
+    if (!force && document.activeElement && document.activeElement.id === 'mes-sel') return;
+    var set = {}; set[ymd(new Date()).slice(0, 7)] = 1;
+    movs.forEach(function (m) { set[m.fecha.slice(0, 7)] = 1; });
+    var meses = Object.keys(set).sort().reverse();
+    if (!mesSel || meses.indexOf(mesSel) < 0) mesSel = meses[0];
+    var delMes = function (t) { return ofTipo(t).filter(function (m) { return m.fecha.slice(0, 7) === mesSel; }); };
+    var g = delMes('gasto'), ventas = delMes('venta'), compras = delMes('compra');
+    var vacio = function (txt) { return '<div class="tablebox"><div class="vacio">' + txt + '</div></div>'; };
+    var sinT = g.filter(function (m) { return derive(m).usdt == null; }).length;
+    var aprox = g.filter(function (m) { return derive(m).aprox; }).length;
+    var com = comerciosDe(g);
+    var p2pSec = function (titulo, vl, bl, rows, t) {
+      var faltan = rows.filter(function (m) { return !m.bs; }).length, prom = promTasa(rows);
+      return '<section><h2>' + titulo + '</h2>' + (rows.length
+        ? '<div class="band">' + bandHtml([
+            ['USDT ' + vl, nf.format(sum(rows, function (m) { return m.usdt; })), rows.length + (rows.length === 1 ? ' orden' : ' órdenes')],
+            [bl, bs(sum(rows, function (m) { return m.bs; })), faltan ? 'faltan Bs en ' + faltan + ' órdenes' : ''],
+            ['Tasa promedio', prom ? bs(prom) : '—', 'Bs por USDT']
+          ]) + '</div>' + tablaHtml(t, rows, false)
+        : vacio('Sin movimientos este mes')) + '</section>';
+    };
+    c.hidden = false;
+    c.innerHTML =
+      '<div class="mes-bar"><label for="mes-sel">Mes</label><select id="mes-sel">' + meses.map(function (k) {
+        return '<option value="' + k + '"' + (k === mesSel ? ' selected' : '') + '>' + mesTxt(k) + '</option>';
+      }).join('') + '</select></div>' +
+      '<section><h2>Gastos con la tarjeta</h2>' + (g.length
+        ? '<div class="band">' + bandHtml([
+            ['Gastado en el mes', usd(sum(g, function (m) { return derive(m).usdt; })), sinT ? 'sin contar ' + sinT + (sinT === 1 ? ' pago sin tasa' : ' pagos sin tasa') : ''],
+            ['Pagos', String(g.length), aprox ? aprox + (aprox === 1 ? ' con tasa aprox.' : ' con tasa aprox.') : ''],
+            ['Bolívares', bs(sum(g, function (m) { return m.bs; }))]
+          ]) + '</div>'
+        : vacio('Sin pagos este mes')) + '</section>' +
+      (com.length ? '<section><h2>Gasto por comercio (en dólares)</h2>' + barrasHtml(com) + '</section>' : '') +
+      (g.length ? '<section><h2>Pagos del mes</h2>' + tablaHtml('gasto', g, false) + '</section>' : '') +
+      p2pSec('Ventas de USDT', 'vendidos', 'Bs recibidos', ventas, 'venta') +
+      p2pSec('Compras de USDT', 'comprados', 'Bs pagados', compras, 'compra');
+  }
+
+  function render() {
+    var ae = document.activeElement;
+    if (ae && ae.tagName === 'INPUT' && $('#lista').contains(ae)) { dirty = true; return; }
+    dirty = false;
+    renderTasa(); renderBands(); renderAviso(); renderLista(); renderComercios(); renderResumen();
+  }
+
+  function setTab(t) {
+    tab = t; pendingDel = null;
+    ['gasto', 'venta', 'compra', 'resumen'].forEach(function (k) {
+      $('#tab-' + k).setAttribute('aria-selected', k === t ? 'true' : 'false');
+      var f = $('#f-' + k); if (f) f.hidden = !(k === t) || !canWrite;
+    });
+    render();
+  }
+
+  async function guardar(fn, okMsg) {
+    try { var r = await fn(); if (r && r.error) throw r.error; if (okMsg) toast(okMsg); await cargar(); return true; }
+    catch (e) {
+      toast(e && e.code === '42501' ? 'No tienes permiso para guardar.' : 'No se pudo guardar. Intenta de nuevo.');
+      return false;
+    }
+  }
+
+  document.addEventListener('click', async function (e) {
+    var t = e.target.closest('[data-tab],[data-act]'); if (!t) return;
+    if (t.dataset.tab) { setTab(t.dataset.tab); return; }
+    if (t.dataset.act === 'salir') { await sb.auth.signOut(); return; }
+    if (t.dataset.act === 'registro') { await registrar(); return; }
+    if (!db) return;
+    if (t.dataset.act === 'del') {
+      var id = t.dataset.id;
+      if (pendingDel !== id) { pendingDel = id; render(); clearTimeout(setTab.h); setTab.h = setTimeout(function () { pendingDel = null; render(); }, 3000); return; }
+      pendingDel = null;
+      await guardar(function () { return db.doc('movs/' + id).delete(); }, 'Borrado');
+    }
+    if (t.dataset.act === 'aplicar' && tasa) {
+      t.disabled = true;
+      var pend = ofTipo('gasto').filter(sinTasa);
+      var ok = true;
+      for (var i = 0; i < pend.length && ok; i++) {
+        ok = await guardar(function () { return db.doc('movs/' + pend[i].id).update({ tasa: tasa.valor }); });
+      }
+      if (ok) toast('Tasa aplicada a ' + pend.length + (pend.length === 1 ? ' pago' : ' pagos'));
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'mes-sel') { mesSel = e.target.value; renderResumen(true); }
+  });
+
+  document.addEventListener('focusout', function () { setTimeout(function () { if (dirty) render(); }, 0); });
+
+  document.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var f = e.target;
+    if (f.id === 'f-login' || f.id === 'login') { await entrarConClave(); return; }
+    if (!db) { toast('Los datos no están conectados todavía.'); return; }
+
+    if (f.id === 'f-tasa') {
+      var v = num($('#tasa-in').value);
+      if (!v) { toast('Escribe la tasa en bolívares, por ejemplo 650,00'); return; }
+      await guardar(function () { return db.doc('ajustes/tasa').set({ valor: v, fecha: ymd(new Date()) }); }, 'Tasa guardada');
+      return;
+    }
+    if (f.dataset.act === 'fix') {
+      var val = num(f.querySelector('input').value);
+      if (!val) { toast('Escribe un número mayor que cero'); return; }
+      var patch = {}; patch[f.dataset.field] = val;
+      await guardar(function () { return db.doc('movs/' + f.dataset.id).update(patch); }, 'Guardado');
+      return;
+    }
+    if (f.classList.contains('add')) {
+      var tipo = f.dataset.tipo, fd = new FormData(f), fecha = fd.get('fecha');
+      if (!fecha) { toast('Falta la fecha'); return; }
+      var doc = { tipo: tipo, fecha: fecha, detalle: String(fd.get('detalle') || '').trim() };
+      if (fecha === ymd(new Date())) doc.ts = new Date().toISOString();
+      if (tipo === 'gasto') {
+        var b = num(fd.get('bs')); if (!b) { toast('Escribe los bolívares del pago'); return; }
+        if (!doc.detalle) { toast('Escribe el comercio'); return; }
+        doc.bs = b;
+        doc.tasa = num(fd.get('tasa')) || (tasa && tasa.valor) || null;
+      } else {
+        var u = num(fd.get('usdt')); if (!u) { toast('Escribe los USDT'); return; }
+        doc.usdt = u; doc.bs = num(fd.get('bs')) || null;
+      }
+      var ok2 = await guardar(function () { return db.collection('movs').add(doc); }, 'Agregado');
+      if (ok2) { f.reset(); f.fecha.value = ymd(new Date()); }
+    }
+  });
+
+  function initForms() {
+    ['gasto', 'venta', 'compra'].forEach(function (k) { $('#f-' + k).fecha.value = ymd(new Date()); });
+  }
+
+  // ---- Acceso y datos (Supabase) ----
+  var SUPABASE_URL = 'https://iooudronionbxgpeecbs.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_PrHvdrOEE3aDKaZVwZrXwg_4c30QwS9';
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  var canalListo = false;
+
+  // Misma forma que usa el resto de la página: db.doc(...).update/delete/set y db.collection(...).add
+  function makeDb() {
+    return {
+      doc: function (path) {
+        var p = path.split('/'), col = p[0], id = p[1];
+        if (col === 'ajustes') return { set: function (v) { return sb.from('binance_ajustes').upsert({ clave: id, valor: v.valor, fecha: v.fecha }); } };
+        return {
+          update: function (patch) { return sb.from('binance_movs').update(patch).eq('id', id); },
+          delete: function () { return sb.from('binance_movs').delete().eq('id', id); }
+        };
+      },
+      collection: function () { return { add: function (doc) { return sb.from('binance_movs').insert(doc); } }; }
+    };
+  }
+
+  function armarP2p() {
+    p2p = movs.filter(function (m) { return m.tipo !== 'gasto' && m.usdt && m.bs; })
+      .map(function (m) { return { t: new Date(ordenKey(m)).getTime(), tasa: m.bs / m.usdt }; })
+      .filter(function (x) { return isFinite(x.t); });
+  }
+
+  async function cargar() {
+    var r = await sb.from('binance_movs').select('*').order('fecha', { ascending: false }).limit(1000);
+    if (r.error) { $('#estado').hidden = false; $('#estado').textContent = 'No se pudieron cargar los datos. Recarga la página.'; return; }
+    movs = r.data.map(function (d) { d.id = String(d.id); return d; });
+    armarP2p();
+    var t = await sb.from('binance_ajustes').select('*').eq('clave', 'tasa').maybeSingle();
+    tasa = t.data ? { valor: Number(t.data.valor), fecha: t.data.fecha } : null;
+    loaded = true; $('#estado').hidden = true; render();
+  }
+
+  function mostrarLogin(msg) {
+    $('#app').hidden = true; $('#login').hidden = false;
+    if (msg) $('#login-msg').textContent = msg;
+  }
+
+  async function entrar(session) {
+    if (!session) { db = null; loaded = false; mostrarLogin('Entra con tu correo y tu clave.'); return; }
+    var ok = await sb.rpc('binance_permitido');
+    if (ok.error || ok.data !== true) {
+      await sb.auth.signOut();
+      mostrarLogin('Este correo no tiene permiso para ver este panel.');
+      return;
+    }
+    db = makeDb();
+    $('#login').hidden = true; $('#app').hidden = false;
+    $('#quien').textContent = session.user.email;
+    initForms(); setTab(tab);
+    await cargar();
+    if (!canalListo) {
+      canalListo = true;
+      sb.channel('binance')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_movs' }, cargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'binance_ajustes' }, cargar)
+        .subscribe();
+    }
+  }
+
+  async function entrarConClave() {
+    var r = await sb.auth.signInWithPassword({ email: $('#login-email').value.trim(), password: $('#login-pass').value });
+    if (r.error) toast('Correo o clave incorrectos. Si es tu primera vez, toca "Crear mi clave".');
+  }
+  async function registrar() {
+    var email = $('#login-email').value.trim(), pass = $('#login-pass').value;
+    if (!email || pass.length < 6) { toast('Escribe tu correo y una clave de al menos 6 caracteres.'); return; }
+    var r = await sb.auth.signUp({ email: email, password: pass, options: { emailRedirectTo: location.href.split('#')[0] } });
+    if (r.error) { toast(r.error.message && /registered/i.test(r.error.message) ? 'Ese correo ya tiene clave. Toca Entrar.' : 'No se pudo crear la clave. Intenta de nuevo.'); return; }
+    if (!r.data.session) toast('Te enviamos un correo. Ábrelo, confirma, y luego entra aquí.');
+  }
+
+  function start() {
+    $('#estado').textContent = 'Cargando datos…';
+    sb.auth.onAuthStateChange(function (ev, session) { setTimeout(function () { entrar(session); }, 0); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && db) cargar(); });
+  }
+  start();
+})();
+</script>
+
+</body>
+</html>
