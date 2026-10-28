@@ -117,6 +117,8 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #login p { margin: 0; font-size: 13px; color: var(--ink-2); }
 .quien { font-size: 12px; color: var(--ink-2); }
 form.add select { width: 100%; }
+.pos { color: #1B7F4B; }
+.neg { color: #B3402A; }
 .neg { color: var(--bad); }
 #cuentas { display: flex; flex-direction: column; gap: 20px; }
 .tasa-val { font-size: 24px; font-weight: 500; }
@@ -186,7 +188,8 @@ form.add select { width: 100%; }
     <label>Fecha<input type="date" name="fecha" required></label>
     <label class="ancho">Comercio<input type="text" name="detalle" required placeholder="Ej: Farmacia Central"></label>
     <label>Bolívares<input class="num" name="bs" inputmode="decimal" required placeholder="0,00"></label>
-    <label>Tasa (opcional)<input class="num" name="tasa" inputmode="decimal" placeholder="Tasa del día"></label>
+    <label>Tasa<select name="tasa_tipo"><option value="bcv" selected>BCV</option><option value="binance">Binance</option><option value="manual">Otra (escribirla)</option></select></label>
+    <label>Tasa manual<input class="num" name="tasa" inputmode="decimal" placeholder="Solo si eliges Otra"></label>
     <button class="main" type="submit">Agregar pago</button>
   </form>
   <form class="add" id="f-venta" data-tipo="venta" autocomplete="off" hidden>
@@ -326,12 +329,19 @@ form.add select { width: 100%; }
   }
   function derive(m) {
     if (m.tipo === 'gasto') {
-      var t = m.tasa || null, aprox = false, hora = false;
-      if (!t && m.usd == null) {
-        t = tasaHora(m); hora = !!t;
-        if (!t) { t = tasaAprox(m); aprox = !!t; }
+      // Tasa del pago: BCV, Binance (por defecto en los antiguos) o manual. Fija el valor en dólares.
+      // El costo real en USDT siempre sale de la tasa Binance de esa hora.
+      var tp = m.tasa_tipo || 'binance', cb = null, aprox = false, hora = false;
+      if (tp === 'binance' && m.tasa) cb = m.tasa;
+      if (!cb && m.usd == null) {
+        cb = tasaHora(m); hora = !!cb;
+        if (!cb) { cb = tasaAprox(m); aprox = !!cb; }
       }
-      return { usdt: m.usd != null ? m.usd : (m.bs && t ? m.bs / t : null), bs: m.bs || null, tasa: t, aprox: aprox, hora: hora };
+      var costo = m.usd != null ? m.usd : (m.bs && cb ? m.bs / cb : null);
+      var vr = tp === 'bcv' ? bcvHora(ordenKey(m)) : (tp === 'manual' ? m.tasa : cb);
+      var valor = m.usd != null ? m.usd : (m.bs && vr ? m.bs / vr : null);
+      var dif = tp !== 'binance' && valor != null && costo != null ? valor - costo : null;
+      return { usdt: valor, costo: costo, dif: dif, bs: m.bs || null, tasa: vr, tipo: tp, aprox: aprox, hora: hora };
     }
     return { usdt: m.usdt, bs: m.bs || null, tasa: m.bs && m.usdt ? m.bs / m.usdt : null };
   }
@@ -411,16 +421,20 @@ form.add select { width: 100%; }
   function tablaHtml(t, rows, edit) {
     var head, body, fin = edit ? '<th></th>' : '', cel = function (m) { return edit ? delCell(m.id) : ''; };
     if (t === 'gasto') {
-      head = '<th>Fecha</th><th>Comercio</th><th class="r">Bolívares</th><th class="r">Tasa</th><th class="r">Dólares</th>' + fin;
+      head = '<th>Fecha</th><th>Comercio</th><th class="r">Bolívares</th><th class="r">Tasa</th><th class="r">Dólares</th><th class="r">Costo USDT</th><th class="r">Diferencia</th>' + fin;
       body = rows.map(function (m) {
         var d = derive(m);
         return '<tr><td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>' +
           '<td class="det">' + esc(m.detalle) + '</td>' +
           '<td class="r">' + bs(d.bs) + '</td>' +
-          '<td class="r tcell">' + (d.aprox || d.hora
-            ? bs(d.tasa) + (d.hora ? '<span class="aprox" title="Tasa de Binance P2P guardada a esa hora">de esa hora</span>' : '<span class="aprox" title="Tasa de tu compra o venta P2P más cercana a esa hora">aprox.</span>') + (edit && canWrite ? pendForm(m.id, 'tasa', 'Cambiar') : '')
-            : (d.tasa ? bs(d.tasa) : (edit && canWrite && m.usd == null ? pendForm(m.id, 'tasa', 'Tasa') : '—'))) + '</td>' +
-          '<td class="r">' + usd(d.usdt) + '</td>' + cel(m) + '</tr>';
+          '<td class="r tcell">' + (d.tipo === 'bcv' || d.tipo === 'manual'
+            ? (d.tasa ? bs(d.tasa) + '<span class="aprox">' + (d.tipo === 'bcv' ? 'BCV' : 'manual') + '</span>' : '—')
+            : (d.aprox || d.hora
+              ? bs(d.tasa) + (d.hora ? '<span class="aprox" title="Tasa de Binance P2P guardada a esa hora">Binance · de esa hora</span>' : '<span class="aprox" title="Tasa de tu compra o venta P2P más cercana a esa hora">Binance · aprox.</span>') + (edit && canWrite ? pendForm(m.id, 'tasa', 'Cambiar') : '')
+              : (d.tasa ? bs(d.tasa) : (edit && canWrite && m.usd == null ? pendForm(m.id, 'tasa', 'Tasa') : '—')))) + '</td>' +
+          '<td class="r">' + usd(d.usdt) + '</td>' +
+          '<td class="r">' + (d.costo != null ? nf.format(d.costo) + ' USDT' : '—') + '</td>' +
+          '<td class="r">' + (d.dif != null ? '<span class="' + (d.dif >= 0 ? 'pos' : 'neg') + '">' + (d.dif >= 0 ? '+' : '−') + usd(Math.abs(d.dif)) + '</span>' : '—') + '</td>' + cel(m) + '</tr>';
       }).join('');
     } else {
       head = '<th>Fecha</th><th>Nota</th><th class="r">USDT</th><th class="r">Bolívares</th><th class="r">Tasa</th>' + fin;
@@ -517,6 +531,7 @@ form.add select { width: 100%; }
       '<section><h2>Gastos con la tarjeta</h2>' + (g.length
         ? '<div class="band">' + bandHtml([
             ['Gastado en el mes', usd(sum(g, function (m) { return derive(m).usdt; })), sinT ? 'sin contar ' + sinT + (sinT === 1 ? ' pago sin tasa' : ' pagos sin tasa') : ''],
+            ['Diferencia BCV vs Binance', usd(sum(g, function (m) { return derive(m).dif; })), 'costo real ' + nf.format(sum(g, function (m) { return derive(m).costo; })) + ' USDT'],
             ['Pagos', String(g.length), aprox ? aprox + (aprox === 1 ? ' con tasa aprox.' : ' con tasa aprox.') : ''],
             ['Bolívares', bs(sum(g, function (m) { return m.bs; }))]
           ]) + '</div>'
@@ -550,7 +565,8 @@ form.add select { width: 100%; }
   function totLista(t, rows) {
     if (t === 'gasto') {
       var sin = rows.filter(function (m) { return derive(m).usdt == null; }).length;
-      return rows.length + (rows.length === 1 ? ' pago' : ' pagos') + ' · ' + usd(sum(rows, function (m) { return derive(m).usdt; })) + ' · ' + bs(sum(rows, function (m) { return m.bs; })) + ' Bs' + (sin ? ' (sin contar ' + sin + ' sin tasa)' : '');
+      return rows.length + (rows.length === 1 ? ' pago' : ' pagos') + ' · ' + usd(sum(rows, function (m) { return derive(m).usdt; })) + ' · ' + bs(sum(rows, function (m) { return m.bs; })) + ' Bs' + (sin ? ' (sin contar ' + sin + ' sin tasa)' : '') +
+        (rows.some(function (m) { return derive(m).dif != null; }) ? ' · costo ' + nf.format(sum(rows, function (m) { return derive(m).costo; })) + ' USDT · diferencia ' + usd(sum(rows, function (m) { return derive(m).dif; })) : '');
     }
     return rows.length + (rows.length === 1 ? ' orden' : ' órdenes') + ' · ' + nf.format(sum(rows, function (m) { return m.usdt; })) + ' USDT · ' + bs(sum(rows, function (m) { return m.bs; })) + ' Bs';
   }
@@ -727,7 +743,7 @@ form.add select { width: 100%; }
     }
     if (t.dataset.act === 'aplicar' && tasa) {
       t.disabled = true;
-      var pend = ofTipo('gasto').filter(sinTasa);
+      var pend = ofTipo('gasto').filter(function (m) { return sinTasa(m) && (m.tasa_tipo || 'binance') === 'binance'; });
       var ok = true;
       for (var i = 0; i < pend.length && ok; i++) {
         ok = await guardar(function () { return db.doc('movs/' + pend[i].id).update({ tasa: tasa.valor }); });
@@ -813,7 +829,11 @@ form.add select { width: 100%; }
         var b = num(fd.get('bs')); if (!b) { toast('Escribe los bolívares del pago'); return; }
         if (!doc.detalle) { toast('Escribe el comercio'); return; }
         doc.bs = b;
-        doc.tasa = num(fd.get('tasa')) || (tasa && tasa.valor) || null;
+        doc.tasa_tipo = fd.get('tasa_tipo') || 'bcv';
+        if (doc.tasa_tipo === 'manual') {
+          doc.tasa = num(fd.get('tasa'));
+          if (!doc.tasa) { toast('Escribe la tasa manual'); return; }
+        }
       } else {
         var u = num(fd.get('usdt')); if (!u) { toast('Escribe los USDT'); return; }
         doc.usdt = u; doc.bs = num(fd.get('bs')) || null;
