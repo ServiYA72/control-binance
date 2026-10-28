@@ -507,8 +507,7 @@ form.add select { width: 100%; }
 
   function delCell(id, col) {
     if (!canWrite) return '<td></td>';
-    var sure = pendingDel === id;
-    return '<td class="r"><button type="button" class="link" data-act="edit" data-col="' + (col || 'movs') + '" data-id="' + esc(id) + '">Editar</button> <button type="button" class="link' + (sure ? ' sure' : '') + '" data-act="del" data-col="' + (col || 'movs') + '" data-id="' + esc(id) + '">' + (sure ? '¿Borrar?' : 'Borrar') + '</button></td>';
+    return '<td class="r"><button type="button" class="link" data-act="edit" data-col="' + (col || 'movs') + '" data-id="' + esc(id) + '">Editar</button> <button type="button" class="link" data-act="del" data-col="' + (col || 'movs') + '" data-id="' + esc(id) + '">Borrar</button></td>';
   }
 
   // Gasto en dólares por comercio, de mayor a menor: [nombre, dólares, cantidad de pagos]
@@ -790,6 +789,8 @@ form.add select { width: 100%; }
 
   document.addEventListener('click', async function (e) {
     var t = e.target.closest('[data-tab],[data-act]'); if (!t) return;
+    var fa = document.activeElement;
+    if (t.tagName === 'BUTTON' && fa && fa !== t && (fa.tagName === 'INPUT' || fa.tagName === 'SELECT') && fa.blur) fa.blur();
     if (t.dataset.tab) { setTab(t.dataset.tab); return; }
     if (t.dataset.act === 'undo') {
       var uf = undoFn; undoFn = null; $('#toast').hidden = true;
@@ -804,8 +805,6 @@ form.add select { width: 100%; }
     if (!db) return;
     if (t.dataset.act === 'del') {
       var id = t.dataset.id, colDel = t.dataset.col || 'movs';
-      if (pendingDel !== id) { pendingDel = id; render(); clearTimeout(setTab.h); setTab.h = setTimeout(function () { pendingDel = null; render(); }, 3000); return; }
-      pendingDel = null;
       var colRec = colDel === 'traspasos' ? 'cmovs' : colDel;
       var recs = conTabla(colRec).filter(function (x) { return colDel === 'traspasos' ? x.traspaso_id === id : String(x.id) === id; });
       await guardar(function () { return db.doc(colDel + '/' + id).delete(); }, 'Borrado', recs.length ? function () { return db.collection(colRec).add(sinId(recs)); } : null);
