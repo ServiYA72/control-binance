@@ -114,6 +114,11 @@ form.add select { width: 100%; }
 #cuentas { display: flex; flex-direction: column; gap: 20px; }
 .tasa-val { font-size: 24px; font-weight: 500; }
 #calc { display: flex; flex-direction: column; gap: 20px; }
+.filtro { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 10px; }
+.filtro label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.filtro input[type=date] { width: auto; padding: 6px 8px; }
+.filtro select { padding: 6px 8px; }
+.filtro-tot { font-size: 13px; color: var(--ink-2); }
 .vacio { padding: 28px 16px; text-align: center; color: var(--ink-2); }
 .vacio strong { display: block; color: var(--ink); margin-bottom: 4px; font-weight: 600; }
 .comercios { display: flex; flex-direction: column; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
@@ -224,7 +229,7 @@ form.add select { width: 100%; }
         <button class="main" type="submit">Agregar movimiento</button>
       </form>
     </section>
-    <section><h2>Movimientos de las cuentas</h2><div id="cu-lista"></div></section>
+    <section><h2>Movimientos de las cuentas</h2><div id="cu-filtro"></div><div id="cu-lista"></div></section>
     <section><h2>Agregar una cuenta</h2>
       <form class="add" id="f-cuenta" autocomplete="off">
         <label class="ancho">Nombre<input type="text" name="nombre" required placeholder="Ej: Banesco"></label>
@@ -244,6 +249,7 @@ form.add select { width: 100%; }
   var $ = function (s) { return document.querySelector(s); };
   var db = null, canWrite = true;
   var PANELES = ['resumen', 'cuentas', 'calc'];
+  var fMes = 'todos', fDesde = '', fHasta = '', fTipo = 'todos', fCuenta = 'todas';
   var movs = [], p2p = [], tasasH = [], cuentas = [], cmovs = [], mesSel = null, tasa = null, tab = 'gasto', pendingDel = null, dirty = false, loaded = false;
 
   var nf = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -424,14 +430,15 @@ form.add select { width: 100%; }
   }
 
   function renderLista() {
-    var rows = ofTipo(tab), box = $('#lista');
+    var todas = ofTipo(tab), rows = todas.filter(enFiltro), box = $('#lista');
     if (!loaded || PANELES.indexOf(tab) > -1) { box.innerHTML = ''; return; }
-    if (!rows.length) {
+    if (!todas.length) {
       var txt = { gasto: ['Aún no hay pagos', 'Agrega el primero arriba, o pídele a Claude que cargue los pagos nuevos desde tu Gmail.'], venta: ['Aún no hay ventas de USDT', 'Agrega la primera arriba, o pídele a Claude que cargue las órdenes P2P desde tu Gmail.'], compra: ['Aún no hay compras de USDT', 'Agrega la primera arriba, o pídele a Claude que cargue las órdenes P2P desde tu Gmail.'] }[tab];
       box.innerHTML = '<div class="tablebox"><div class="vacio"><strong>' + txt[0] + '</strong>' + txt[1] + '</div></div>';
       return;
     }
-    box.innerHTML = tablaHtml(tab, rows, true);
+    var barra = '<div class="filtro">' + filtroFechasHtml('f-') + '<span class="filtro-tot">' + totLista(tab, rows) + '</span>' + quitarFiltroHtml() + '</div>';
+    box.innerHTML = barra + (rows.length ? tablaHtml(tab, rows, true) : '<div class="tablebox"><div class="vacio">No hay movimientos con ese filtro.</div></div>');
   }
   function delCell(id, col) {
     if (!canWrite) return '<td></td>';
@@ -513,6 +520,34 @@ form.add select { width: 100%; }
       p2pSec('Compras de USDT', 'comprados', 'Bs pagados', compras, 'compra');
   }
 
+  // ---- Filtros: por mes o por rango de fechas ----
+  function mesDe(m) { return m.fecha.slice(0, 7); }
+  function enFiltro(m) {
+    return (fMes === 'todos' || mesDe(m) === fMes) && (!fDesde || m.fecha >= fDesde) && (!fHasta || m.fecha <= fHasta);
+  }
+  function mesesTodos() {
+    var set = {}; set[ymd(new Date()).slice(0, 7)] = 1;
+    movs.concat(cmovs).forEach(function (m) { set[mesDe(m)] = 1; });
+    return Object.keys(set).sort().reverse();
+  }
+  // pre: 'f-' en las listas, 'f-cu-' en Cuentas (los ids distinguen cuál filtro cambió)
+  function filtroFechasHtml(pre) {
+    return '<label>Mes <select id="' + pre + 'mes"><option value="todos">Todos los meses</option>' + mesesTodos().map(function (k) {
+        return '<option value="' + k + '"' + (k === fMes ? ' selected' : '') + '>' + mesTxt(k) + '</option>';
+      }).join('') + '</select></label>' +
+      '<label>Desde <input type="date" id="' + pre + 'desde" value="' + fDesde + '"></label>' +
+      '<label>Hasta <input type="date" id="' + pre + 'hasta" value="' + fHasta + '"></label>';
+  }
+  function hayFiltro() { return fMes !== 'todos' || fDesde || fHasta || fTipo !== 'todos' || fCuenta !== 'todas'; }
+  function quitarFiltroHtml() { return hayFiltro() ? '<button type="button" class="link" data-act="limpiar-filtro">Quitar filtros</button>' : ''; }
+  function totLista(t, rows) {
+    if (t === 'gasto') {
+      var sin = rows.filter(function (m) { return derive(m).usdt == null; }).length;
+      return rows.length + (rows.length === 1 ? ' pago' : ' pagos') + ' · ' + usd(sum(rows, function (m) { return derive(m).usdt; })) + ' · ' + bs(sum(rows, function (m) { return m.bs; })) + ' Bs' + (sin ? ' (sin contar ' + sin + ' sin tasa)' : '');
+    }
+    return rows.length + (rows.length === 1 ? ' orden' : ' órdenes') + ' · ' + nf.format(sum(rows, function (m) { return m.usdt; })) + ' USDT · ' + bs(sum(rows, function (m) { return m.bs; })) + ' Bs';
+  }
+
   // ---- Cuentas ----
   var MON = { USD: 'Dólares', USDT: 'USDT', BS: 'Bolívares' };
   function dinero(mon, n) { return mon === 'BS' ? bs(n) + ' Bs' : (mon === 'USD' ? usd(n) : nf.format(n) + ' USDT'); }
@@ -580,7 +615,33 @@ form.add select { width: 100%; }
       if (!porTid[m.traspaso_id]) { porTid[m.traspaso_id] = { m: m, tid: m.traspaso_id }; items.push(porTid[m.traspaso_id]); }
       porTid[m.traspaso_id][m.tipo === 'egreso' ? 'sale' : 'entra'] = m;
     });
-    $('#cu-lista').innerHTML = !items.length ? '<div class="tablebox"><div class="vacio"><strong>Aún no hay movimientos</strong>Agrega el primero arriba.</div></div>' :
+    var hay = items.length;
+    items = items.filter(function (it) {
+      if (!enFiltro(it.m)) return false;
+      if (fTipo === 'traspaso' && !it.tid) return false;
+      if ((fTipo === 'ingreso' || fTipo === 'egreso') && (it.tid || it.m.tipo !== fTipo)) return false;
+      if (fCuenta !== 'todas') {
+        var ids = it.tid ? [it.sale && it.sale.cuenta_id, it.entra && it.entra.cuenta_id] : [it.m.cuenta_id];
+        if (ids.indexOf(fCuenta) < 0) return false;
+      }
+      return true;
+    });
+    var ing = {}, egr = {}, nTras = 0;
+    items.forEach(function (it) {
+      if (it.tid) { nTras++; return; }
+      var cu = cuentaDe(it.m.cuenta_id); if (!cu) return;
+      var o = it.m.tipo === 'ingreso' ? ing : egr;
+      o[cu.moneda] = (o[cu.moneda] || 0) + Number(it.m.monto);
+    });
+    var multi = function (o) { var k = Object.keys(o); return k.length ? k.map(function (x) { return dinero(x, o[x]); }).join(' + ') : '—'; };
+    $('#cu-filtro').innerHTML = hay ? '<div class="filtro">' + filtroFechasHtml('f-cu-') +
+      '<label>Tipo <select id="f-cu-tipo">' + [['todos', 'Todos'], ['ingreso', 'Ingresos'], ['egreso', 'Egresos'], ['traspaso', 'Traspasos']].map(function (x) {
+        return '<option value="' + x[0] + '"' + (x[0] === fTipo ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>' +
+      '<label>Cuenta <select id="f-cu-cuenta"><option value="todas">Todas</option>' + cuentas.map(function (c) {
+        return '<option value="' + esc(c.id) + '"' + (c.id === fCuenta ? ' selected' : '') + '>' + esc(c.nombre) + '</option>'; }).join('') + '</select></label>' +
+      '<span class="filtro-tot">Ingresos: ' + multi(ing) + ' · Egresos: ' + multi(egr) + (nTras ? ' · ' + nTras + (nTras === 1 ? ' traspaso' : ' traspasos') : '') + '</span>' + quitarFiltroHtml() + '</div>' : '';
+    $('#cu-lista').innerHTML = !hay ? '<div class="tablebox"><div class="vacio"><strong>Aún no hay movimientos</strong>Agrega el primero arriba.</div></div>' :
+      !items.length ? '<div class="tablebox"><div class="vacio">No hay movimientos con ese filtro.</div></div>' :
       '<div class="tablebox"><table><thead><tr><th>Fecha</th><th>Cuenta</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>' +
       items.map(function (it) {
         var m = it.m, fecha = '<td class="fecha">' + fechaTxt(m.fecha) + (horaTxt(m.ts) ? '<span class="hora">' + horaTxt(m.ts) + '</span>' : '') + '</td>';
@@ -647,6 +708,7 @@ form.add select { width: 100%; }
   document.addEventListener('click', async function (e) {
     var t = e.target.closest('[data-tab],[data-act]'); if (!t) return;
     if (t.dataset.tab) { setTab(t.dataset.tab); return; }
+    if (t.dataset.act === 'limpiar-filtro') { fMes = 'todos'; fDesde = ''; fHasta = ''; fTipo = 'todos'; fCuenta = 'todas'; renderLista(); renderCuentas(); return; }
     if (t.dataset.act === 'salir') { await sb.auth.signOut(); return; }
     if (t.dataset.act === 'registro') { await registrar(); return; }
     if (!db) return;
@@ -673,6 +735,17 @@ form.add select { width: 100%; }
   document.addEventListener('change', function (e) {
     if (e.target.closest && e.target.closest('#f-calc')) renderCalc();
     if (e.target.id === 'mes-sel') { mesSel = e.target.value; renderResumen(true); }
+    var mf = /^f-(cu-)?(mes|desde|hasta|tipo|cuenta)$/.exec(e.target.id || '');
+    if (mf) {
+      var vf = e.target.value;
+      if (mf[2] === 'mes') { fMes = vf; fDesde = ''; fHasta = ''; }
+      else if (mf[2] === 'desde') { fDesde = vf; fMes = 'todos'; }
+      else if (mf[2] === 'hasta') { fHasta = vf; fMes = 'todos'; }
+      else if (mf[2] === 'tipo') fTipo = vf;
+      else fCuenta = vf;
+      if (mf[1]) renderCuentas(); else renderLista();
+      return;
+    }
     if (e.target.id === 'cm-tipo' || e.target.id === 'cm-cuenta' || e.target.id === 'cm-destino') ajustarFormMov();
   });
 
